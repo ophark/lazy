@@ -32,15 +32,12 @@ type Analyzer struct {
 func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	p := rfc3164.NewParser(msg.Body)
 	if err := p.Parse(); err != nil {
+		log.Println(err, string(msg.Body))
 		return nil
 	}
 	message := p.Dump()
 	words := m.parseLog(message["content"].(string))
-	t, ok := message["timestamp"].(time.Time)
-	if !ok {
-		log.Println("time error: ", message["timestamp"], msg.Body)
-		return nil
-	}
+	t := message["timestamp"].(time.Time)
 	con := m.Get()
 	defer con.Close()
 	m.Lock()
@@ -56,7 +53,7 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	}
 	if !strict {
 		m.Publish(m.trainTopic, msg.Body)
-		log.Println("failed bayes", msg.Body)
+		log.Println("failed bayes", string(msg.Body))
 	}
 	if ok {
 		for _, r := range rg {
@@ -65,7 +62,7 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 			}
 		}
 	}
-	log.Println(msg.Body)
+	log.Println("do nothing with",string(msg.Body))
 	return nil
 }
 
