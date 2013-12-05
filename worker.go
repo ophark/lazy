@@ -76,13 +76,8 @@ func (m *Analyzer) parseLog(msg string) []string {
 	for tok != scanner.EOF {
 		if tok == scanner.Ident || tok == scanner.String || tok == scanner.RawString {
 			v := strings.ToLower(s.TokenText())
-			p := uint32(m.count) / m.ConservativeIncrement(v)
-			if p < 100 {
-				log.Println("ignore", v, p)
-			} else {
-				tokens = append(tokens, v)
-				log.Println("not ignore", v)
-			}
+			log.Println(v, m.ConservativeIncrement(v), m.count)
+			tokens = append(tokens, v)
 		}
 		tok = s.Scan()
 	}
