@@ -1,0 +1,9 @@
+{
+    "lookupd_addresses":"127.0.0.1:4160",
+    "nsqd_addr":"127.0.0.1:4151",
+    "maxinflight":"200",
+    "log_topic": "syslog",
+    "log_channel": "online",
+    "train_topic": "bayes",
+    "redis_server":"127.0.0.1:6379"
+}
