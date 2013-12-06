@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"github.com/bitly/go-nsq"
 	"github.com/dustin/go-probably"
 	"github.com/garyburd/redigo/redis"
@@ -11,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"text/scanner"
 	"time"
 )
 
@@ -67,19 +65,11 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 }
 
 func (m *Analyzer) parseLog(msg string) []string {
-	r := bytes.NewReader([]byte(msg))
-	var s scanner.Scanner
-	s.Init(r)
-	tok := s.Scan()
+	re := regexp.MustCompile("\\(|\\)|{|}|:")
+	tokens := strings.Split(re.ReplaceAllString(msg, " "), " ")
 	m.count++
-	var tokens []string
-	for tok != scanner.EOF {
-		if tok == scanner.Ident || tok == scanner.String || tok == scanner.RawString {
-			v := strings.ToLower(s.TokenText())
-			log.Println(v, m.ConservativeIncrement(v), m.count)
-			tokens = append(tokens, v)
-		}
-		tok = s.Scan()
+	for _, v := range tokens {
+		log.Println(v, m.ConservativeIncrement(v), m.count)
 	}
 	return tokens
 }
