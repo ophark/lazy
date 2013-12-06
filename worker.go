@@ -38,6 +38,10 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	t := message["timestamp"].(time.Time)
 	con := m.Get()
 	defer con.Close()
+	if len(message["tag"].(string)) == 0 {
+		message["tag"] = "misc"
+	}
+	con.Do("SADD", "logtags", message["tag"])
 	m.Lock()
 	_, likely, strict := m.c.LogScores(words)
 	rg, ok := m.regexMap[message["tag"].(string)]
