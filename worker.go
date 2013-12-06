@@ -70,6 +70,9 @@ func (m *Analyzer) parseLog(msg string) []string {
 	m.count++
 	var tokens []string
 	for _, v := range t {
+		if len(v) == 1 {
+			continue
+		}
 		tokens = append(tokens, strings.ToLower(v))
 		log.Println(v, m.ConservativeIncrement(v), m.count)
 	}
