@@ -60,12 +60,12 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 			}
 		}
 	}
-	log.Println("do nothing with",string(msg.Body))
+	log.Println("do nothing with", string(msg.Body))
 	return nil
 }
 
 func (m *Analyzer) parseLog(msg string) []string {
-	re := regexp.MustCompile("\\(|\\)|{|}|:")
+	re := regexp.MustCompile("\\(|\\)|{|}")
 	tokens := strings.Split(re.ReplaceAllString(msg, " "), " ")
 	m.count++
 	for _, v := range tokens {
