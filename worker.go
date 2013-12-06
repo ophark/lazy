@@ -66,9 +66,11 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 
 func (m *Analyzer) parseLog(msg string) []string {
 	re := regexp.MustCompile("\\(|\\)|{|}")
-	tokens := strings.Split(re.ReplaceAllString(msg, " "), " ")
+	t := strings.Split(re.ReplaceAllString(msg, " "), " ")
 	m.count++
-	for _, v := range tokens {
+	var tokens []string
+	for _, v := range t {
+		tokens = append(tokens, strings.ToLower(v))
 		log.Println(v, m.ConservativeIncrement(v), m.count)
 	}
 	return tokens
