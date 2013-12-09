@@ -6,9 +6,13 @@ MAKEFLAGS = -s
 all:
 	go build analyzer.go worker.go config.go
 	go build learner.go worker.go config.go
+	go build webui.go logtag.go audittag.go config.go
 
 analyzer:
 	go build analyzer.go worker.go config.go 
+
+web:
+	go build webui.go logtag.go audittag.go config.go
 
 learner:
 	go build learner.go worker.go config.go 

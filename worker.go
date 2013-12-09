@@ -6,6 +6,8 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/jbrukh/bayesian"
 	"github.com/jeromer/syslogparser/rfc3164"
+	"github.com/mattbaird/elastigo/api"
+	"github.com/mattbaird/elastigo/core"
 	"log"
 	"regexp"
 	"strings"
@@ -17,17 +19,20 @@ type Analyzer struct {
 	*redis.Pool
 	*nsq.Writer
 	*probably.Sketch
-	c            *bayesian.Classifier
-	count        int
-	trainTopic   string
-	trainChannel string
-	msgChannel   chan []string
-	regexMap     map[string][]*regexp.Regexp
-	auditTags    map[string]string
+	c                   *bayesian.Classifier
+	trainTopic          string
+	trainChannel        string
+	elasticSearchServer string
+	elasticSearchPort   string
+	msgChannel          chan []string
+	regexMap            map[string][]*regexp.Regexp
+	auditTags           map[string]string
 	sync.Mutex
 }
 
 func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
+	api.Domain = m.elasticSearchServer
+	api.Port = m.elasticSearchPort
 	p := rfc3164.NewParser(msg.Body)
 	if err := p.Parse(); err != nil {
 		log.Println(err, string(msg.Body))
@@ -35,23 +40,28 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	}
 	message := p.Dump()
 	words := m.parseLog(message["content"].(string))
-	t := message["timestamp"].(time.Time)
-	con := m.Get()
-	defer con.Close()
 	if len(message["tag"].(string)) == 0 {
 		message["tag"] = "misc"
 	}
+	con := m.Get()
+	defer con.Close()
 	con.Do("SADD", "logtags", message["tag"])
 	m.Lock()
 	_, likely, strict := m.c.LogScores(words)
 	rg, ok := m.regexMap[message["tag"].(string)]
-	if _, exist := m.auditTags[message["tag"].(string)]; exist {
-		con.Do("ZADD", message["tag"], t.Unix(), msg.Body)
+	tag := message["tag"].(string)
+	if _, exist := m.auditTags[tag]; exist {
+		_, err := core.Index(true, "auditlog", tag, "", message)
+		if err != nil {
+			return err
+		}
 	}
 	m.Unlock()
 	if strict && likely > 0 {
-		log.Println(words, likely)
-		con.Do("ZADD", "err:"+message["tag"].(string), t.Unix(), msg.Body)
+		_, err := core.Index(true, "errorlog", tag, "", message)
+		if err != nil {
+			return err
+		}
 	}
 	if !strict {
 		m.Publish(m.trainTopic, msg.Body)
@@ -64,6 +74,7 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 			}
 		}
 	}
+	// _, err := core.Index(true, "statisticlog", tag, "", message)
 	log.Println("do nothing with", string(msg.Body))
 	return nil
 }
@@ -71,14 +82,13 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 func (m *Analyzer) parseLog(msg string) []string {
 	re := regexp.MustCompile("\\(|\\)|{|}|/")
 	t := strings.Split(re.ReplaceAllString(msg, " "), " ")
-	m.count++
 	var tokens []string
 	for _, v := range t {
 		if len(v) == 1 {
 			continue
 		}
 		tokens = append(tokens, strings.ToLower(v))
-		log.Println(v, m.ConservativeIncrement(v), m.count)
+		log.Println(v, m.ConservativeIncrement(strings.ToLower(v)))
 	}
 	return tokens
 }

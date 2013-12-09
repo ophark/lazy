@@ -32,6 +32,8 @@ func main() {
 	logTopic, _ := c["log_topic"]
 	trainTopic, _ := c["train_topic"]
 	redisServer, _ := c["redis_server"]
+	elasticSearchServer, _ := c["elasticsearch_host"]
+	elasticSearchPort, _ := c["elasticsearch_port"]
 
 	redisCon := func() (redis.Conn, error) {
 		c, err := redis.Dial("tcp", redisServer)
@@ -44,13 +46,15 @@ func main() {
 	defer redisPool.Close()
 
 	analyzer := &Analyzer{
-		Pool:       redisPool,
-		Writer:     nsq.NewWriter(nsqdAddr),
-		trainTopic: trainTopic,
-		Sketch:     probably.NewSketch(1000000, 3),
-		msgChannel: make(chan []string),
-		regexMap:   make(map[string][]*regexp.Regexp),
-		auditTags:  make(map[string]string),
+		Pool:                redisPool,
+		Writer:              nsq.NewWriter(nsqdAddr),
+		trainTopic:          trainTopic,
+		Sketch:              probably.NewSketch(1000000, 3),
+		msgChannel:          make(chan []string),
+		regexMap:            make(map[string][]*regexp.Regexp),
+		auditTags:           make(map[string]string),
+		elasticSearchServer: elasticSearchServer,
+		elasticSearchPort:   elasticSearchPort,
 	}
 	analyzer.getBayes()
 	analyzer.getRegexp()
