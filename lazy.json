@@ -5,5 +5,7 @@
     "log_topic": "syslog",
     "log_channel": "online",
     "train_topic": "bayes",
-    "redis_server":"127.0.0.1:6379"
+    "redis_server":"127.0.0.1:6379",
+    "elasticsearch_host":"127.0.0.1",
+    "elasticsearch_port":"9200"
 }
