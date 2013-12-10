@@ -53,17 +53,14 @@ func main() {
 		Sketch:              probably.NewSketch(1000000, 3),
 		msgChannel:          make(chan Record),
 		regexMap:            make(map[string][]*regexp.Regexp),
-		auditTags:           make(map[string]string),
 		elasticSearchServer: elasticSearchServer,
 		elasticSearchPort:   elasticSearchPort,
 		elasticSearchIndex:  elasticSearchIndex,
 	}
 	analyzer.getBayes()
 	analyzer.getRegexp()
-	analyzer.getAuditTags()
 	go analyzer.syncRegexp()
 	go analyzer.syncBayes()
-	go analyzer.syncAuditTags()
 	go analyzer.elasticSearchBuildIndex()
 	r, err := nsq.NewReader(logTopic, logChannel)
 	if err != nil {

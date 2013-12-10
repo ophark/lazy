@@ -27,7 +27,6 @@ type Analyzer struct {
 	elasticSearchIndex  string
 	msgChannel          chan Record
 	regexMap            map[string][]*regexp.Regexp
-	auditTags           map[string]string
 	sync.Mutex
 }
 
@@ -122,14 +121,6 @@ func (m *Analyzer) syncRegexp() {
 	}
 }
 
-func (m *Analyzer) syncAuditTags() {
-	ticker := time.Tick(time.Second * 3600)
-	for {
-		<-ticker
-		m.getAuditTags()
-	}
-}
-
 func (m *Analyzer) getBayes() {
 	var NormalLog = bayesian.Class("NormalLog")
 	var ErrorLog = bayesian.Class("ErrorLog")
@@ -165,20 +156,6 @@ func (m *Analyzer) getRegexp() {
 		m.Lock()
 		m.regexMap[value] = rg
 		m.Unlock()
-	}
-}
-
-func (m *Analyzer) getAuditTags() {
-	con := m.Get()
-	defer con.Close()
-	t, e := redis.Strings(con.Do("SMEMBERS", "auditlogtags"))
-	if e != nil {
-		return
-	}
-	m.Lock()
-	defer m.Unlock()
-	for _, value := range t {
-		m.auditTags[value] = value
 	}
 }
 
