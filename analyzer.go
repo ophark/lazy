@@ -34,6 +34,7 @@ func main() {
 	redisServer, _ := c["redis_server"]
 	elasticSearchServer, _ := c["elasticsearch_host"]
 	elasticSearchPort, _ := c["elasticsearch_port"]
+	elasticSearchIndex, _ := c["elasticsearch_index"]
 
 	redisCon := func() (redis.Conn, error) {
 		c, err := redis.Dial("tcp", redisServer)
@@ -50,11 +51,12 @@ func main() {
 		Writer:              nsq.NewWriter(nsqdAddr),
 		trainTopic:          trainTopic,
 		Sketch:              probably.NewSketch(1000000, 3),
-		msgChannel:          make(chan []string),
+		msgChannel:          make(chan Record),
 		regexMap:            make(map[string][]*regexp.Regexp),
 		auditTags:           make(map[string]string),
 		elasticSearchServer: elasticSearchServer,
 		elasticSearchPort:   elasticSearchPort,
+		elasticSearchIndex:  elasticSearchIndex,
 	}
 	analyzer.getBayes()
 	analyzer.getRegexp()
@@ -62,6 +64,7 @@ func main() {
 	go analyzer.syncRegexp()
 	go analyzer.syncBayes()
 	go analyzer.syncAuditTags()
+	go analyzer.elasticSearchBuildIndex()
 	r, err := nsq.NewReader(logTopic, logChannel)
 	if err != nil {
 		log.Fatal(err)

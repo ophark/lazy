@@ -24,15 +24,20 @@ type Analyzer struct {
 	trainChannel        string
 	elasticSearchServer string
 	elasticSearchPort   string
-	msgChannel          chan []string
+	elasticSearchIndex  string
+	msgChannel          chan Record
 	regexMap            map[string][]*regexp.Regexp
 	auditTags           map[string]string
 	sync.Mutex
 }
 
+type Record struct {
+	logType    string
+	body       map[string]interface{}
+	errChannel chan error
+}
+
 func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
-	api.Domain = m.elasticSearchServer
-	api.Port = m.elasticSearchPort
 	p := rfc3164.NewParser(msg.Body)
 	if err := p.Parse(); err != nil {
 		log.Println(err, string(msg.Body))
@@ -43,25 +48,20 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	if len(message["tag"].(string)) == 0 {
 		message["tag"] = "misc"
 	}
+	tag := message["tag"].(string)
 	con := m.Get()
 	defer con.Close()
 	con.Do("SADD", "logtags", message["tag"])
+	record := Record{
+		errChannel: make(chan error),
+		logType:    "normal",
+	}
 	m.Lock()
 	_, likely, strict := m.c.LogScores(words)
-	rg, ok := m.regexMap[message["tag"].(string)]
-	tag := message["tag"].(string)
-	if _, exist := m.auditTags[tag]; exist {
-		_, err := core.Index(true, "auditlog", tag, "", message)
-		if err != nil {
-			return err
-		}
-	}
+	rg, ok := m.regexMap[tag]
 	m.Unlock()
 	if strict && likely > 0 {
-		_, err := core.Index(true, "errorlog", tag, "", message)
-		if err != nil {
-			return err
-		}
+		record.logType = "error"
 	}
 	if !strict {
 		m.Publish(m.trainTopic, msg.Body)
@@ -70,15 +70,24 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	if ok {
 		for _, r := range rg {
 			if r.MatchString(message["content"].(string)) {
-				return nil
+				break
 			}
 		}
 	}
-	// _, err := core.Index(true, "statisticlog", tag, "", message)
+	record.body = message
 	log.Println("do nothing with", string(msg.Body))
-	return nil
+	m.msgChannel <- record
+	return <-record.errChannel
 }
 
+func (m *Analyzer) elasticSearchBuildIndex() {
+	api.Domain = m.elasticSearchServer
+	api.Port = m.elasticSearchPort
+	for r := range m.msgChannel {
+		_, err := core.Index(true, m.elasticSearchIndex, r.logType, "", r.body)
+		r.errChannel <- err
+	}
+}
 func (m *Analyzer) parseLog(msg string) []string {
 	re := regexp.MustCompile("\\(|\\)|{|}|/")
 	t := strings.Split(re.ReplaceAllString(msg, " "), " ")
