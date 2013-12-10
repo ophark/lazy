@@ -15,6 +15,7 @@ import (
 	"time"
 )
 
+// Analyzer define a syslog analyzer node
 type Analyzer struct {
 	*redis.Pool
 	*nsq.Writer
@@ -30,12 +31,14 @@ type Analyzer struct {
 	sync.Mutex
 }
 
+// Record is used to pass data to elasticsearch
 type Record struct {
 	logType    string
 	body       map[string]interface{}
 	errChannel chan error
 }
 
+// HandleMessage is nsq reader's handle
 func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	p := rfc3164.NewParser(msg.Body)
 	if err := p.Parse(); err != nil {
