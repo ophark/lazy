@@ -67,15 +67,19 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 		m.Publish(m.trainTopic, msg.Body)
 		log.Println("failed bayes", string(msg.Body))
 	}
+	stat := false
 	if ok {
 		for _, r := range rg {
 			if r.MatchString(message["content"].(string)) {
+				stat = true
 				break
 			}
 		}
 	}
 	record.body = message
-	log.Println("do nothing with", string(msg.Body))
+	if !stat {
+		log.Println("do nothing with", string(msg.Body))
+	}
 	m.msgChannel <- record
 	return <-record.errChannel
 }
