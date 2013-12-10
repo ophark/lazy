@@ -47,10 +47,10 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	}
 	message := p.Dump()
 	words := m.parseLog(message["content"].(string))
-	if len(message["tag"].(string)) == 0 {
+	tag := message["tag"].(string)
+	if len(tag) == 0 {
 		message["tag"] = "misc"
 	}
-	tag := message["tag"].(string)
 	con := m.Get()
 	defer con.Close()
 	con.Do("SADD", "logtags", message["tag"])
@@ -69,18 +69,17 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 		m.Publish(m.trainTopic, msg.Body)
 		log.Println("failed bayes", string(msg.Body))
 	}
-	stat := false
 	if ok {
 		for _, r := range rg {
 			if r.MatchString(message["content"].(string)) {
-				stat = true
+				record.logType = "passregexp"
 				break
 			}
 		}
 	}
 	record.body = message
-	if !stat {
-		log.Println("do nothing with", string(msg.Body))
+	if record.logType != "passregexp" {
+		log.Println("regexp check failed", string(msg.Body))
 	}
 	m.msgChannel <- record
 	return <-record.errChannel
