@@ -95,18 +95,12 @@ func (m *Analyzer) elasticSearchBuildIndex() {
 			log.Println(errBuf.Err)
 		}
 	}()
-	count := 0
 	var err error
 	for r := range m.msgChannel {
 		err = indexor.Index(m.elasticSearchIndex, r.logType, "", "", nil, r.body)
 		r.errChannel <- err
-		count ++
-		if count > 20 {
-			done <- true
-			indexor.Run(done)
-			count = 0
-		}
 	}
+	done <- true
 }
 func (m *Analyzer) parseLog(msg string) []string {
 	re := regexp.MustCompile("\\(|\\)|{|}|/")
