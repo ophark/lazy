@@ -48,6 +48,7 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	tag := message["tag"].(string)
 	if len(tag) == 0 {
 		message["tag"] = "misc"
+		tag = "misc"
 	}
 	con := m.Get()
 	defer con.Close()
