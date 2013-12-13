@@ -55,14 +55,14 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	con.Do("SADD", "logtags", message["tag"])
 	record := Record{
 		errChannel: make(chan error),
-		logType:    "normal",
+		logType:    tag,
 	}
 	m.Lock()
 	_, likely, strict := m.c.LogScores(words)
 	rg, ok := m.regexMap[tag]
 	m.Unlock()
 	if strict && likely > 0 {
-		record.logType = "error"
+		record.logType += "_bayes"
 	}
 	if !strict {
 		m.Publish(m.trainTopic, msg.Body)
@@ -70,7 +70,7 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	if ok {
 		for _, r := range rg {
 			if r.MatchString(message["content"].(string)) {
-				record.logType = "passregexp"
+				record.logType +=  "_passregexp"
 				break
 			}
 		}
