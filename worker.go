@@ -77,9 +77,6 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 		}
 	}
 	record.body = message
-	if record.logType != "passregexp" {
-		log.Println("regexp check failed", string(msg.Body))
-	}
 	m.msgChannel <- record
 	return <-record.errChannel
 }
