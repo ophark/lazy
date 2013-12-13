@@ -49,6 +49,8 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	if len(tag) == 0 {
 		message["tag"] = "misc"
 		tag = "misc"
+	} else {
+		tag = strings.Replace(tag, ".", "", -1)
 	}
 	con := m.Get()
 	defer con.Close()
@@ -70,7 +72,7 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	if ok {
 		for _, r := range rg {
 			if r.MatchString(message["content"].(string)) {
-				record.logType +=  "_passregexp"
+				record.logType += "_passregexp"
 				break
 			}
 		}
