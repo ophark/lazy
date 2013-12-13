@@ -66,7 +66,6 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	}
 	if !strict {
 		m.Publish(m.trainTopic, msg.Body)
-		log.Println("failed bayes", string(msg.Body))
 	}
 	if ok {
 		for _, r := range rg {
