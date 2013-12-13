@@ -88,9 +88,26 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 func (m *Analyzer) elasticSearchBuildIndex() {
 	api.Domain = m.elasticSearchServer
 	api.Port = m.elasticSearchPort
+	indexor := core.NewBulkIndexorErrors(10, 60)
+	done := make(chan bool)
+	indexor.Run(done)
+	defer close(indexor.ErrorChannel)
+	go func() {
+		for errBuf := range indexor.ErrorChannel {
+			log.Println(errBuf.Err)
+		}
+	}()
+	count := 0
+	var err error
 	for r := range m.msgChannel {
-		_, err := core.Index(true, m.elasticSearchIndex, r.logType, "", r.body)
+		err = indexor.Index(m.elasticSearchIndex, r.logType, "", "", nil, r.body)
 		r.errChannel <- err
+		count ++
+		if count > 20 {
+			done <- true
+			indexor.Run(done)
+			count = 0
+		}
 	}
 }
 func (m *Analyzer) parseLog(msg string) []string {
