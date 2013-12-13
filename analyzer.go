@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"github.com/bitly/go-nsq"
-	"github.com/dustin/go-probably"
 	"github.com/garyburd/redigo/redis"
 	"log"
 	"os"
@@ -50,7 +49,6 @@ func main() {
 		Pool:                redisPool,
 		Writer:              nsq.NewWriter(nsqdAddr),
 		trainTopic:          trainTopic,
-		Sketch:              probably.NewSketch(1000000, 3),
 		msgChannel:          make(chan Record),
 		regexMap:            make(map[string][]*regexp.Regexp),
 		elasticSearchServer: elasticSearchServer,

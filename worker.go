@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/bitly/go-nsq"
-	"github.com/dustin/go-probably"
 	"github.com/garyburd/redigo/redis"
 	"github.com/jbrukh/bayesian"
 	"github.com/jeromer/syslogparser/rfc3164"
@@ -19,7 +18,6 @@ import (
 type Analyzer struct {
 	*redis.Pool
 	*nsq.Writer
-	*probably.Sketch
 	c                   *bayesian.Classifier
 	trainTopic          string
 	trainChannel        string
@@ -115,11 +113,7 @@ func (m *Analyzer) parseLog(msg string) []string {
 	t := strings.Split(re.ReplaceAllString(msg, " "), " ")
 	var tokens []string
 	for _, v := range t {
-		if len(v) == 1 {
-			continue
-		}
 		tokens = append(tokens, strings.ToLower(v))
-		log.Println(v, m.ConservativeIncrement(strings.ToLower(v)))
 	}
 	return tokens
 }
