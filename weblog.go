@@ -30,7 +30,7 @@ func main() {
 	redisServer, _ := c["redis_server"]
 	elasticSearchServer, _ := c["elasticsearch_host"]
 	elasticSearchPort, _ := c["elasticsearch_port"]
-	elasticSearchIndex, _ := c["elasticsearch_index"]
+	elasticSearchIndex, _ := c["elasticsearch_weblog_index"]
 
 	redisCon := func() (redis.Conn, error) {
 		c, err := redis.Dial("tcp", redisServer)
