@@ -26,7 +26,6 @@ func main() {
 
 	lookupdAddresses, _ := c["lookupd_addresses"]
 	maxinflight, _ := c["maxinflight"]
-	logTopics, _ := c["log_topics"]
 	logChannel, _ := c["log_channel"]
 	redisServer, _ := c["redis_server"]
 	elasticSearchServer, _ := c["elasticsearch_host"]
@@ -52,7 +51,7 @@ func main() {
 	for {
 		select {
 		case <-ticker:
-			topics, err := redis.Strings(con.Do("SMEMBERS", logTopics))
+			topics, err := redis.Strings(con.Do("SMEMBERS", "weblogtopics"))
 			if err != nil {
 				log.Println("fail to get topics")
 				continue
