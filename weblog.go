@@ -45,40 +45,21 @@ func main() {
 	weblogs := make(map[string]*WebLog)
 	readers := make(map[string]*nsq.Reader)
 	ticker := time.Tick(time.Second * 600)
-	checkticker := time.Tick(time.Second * 3600)
 	con := redisPool.Get()
 	defer con.Close()
 	termchan := make(chan os.Signal, 1)
 	signal.Notify(termchan, syscall.SIGINT, syscall.SIGTERM)
 	for {
 		select {
-		case <-checkticker:
+		case <-ticker:
 			topics, err := redis.Strings(con.Do("SMEMBERS", logTopics))
 			if err != nil {
-				log.Println("fail to get logtopics")
+				log.Println("fail to get topics")
 				continue
 			}
 			check := make(map[string]string)
 			for _, topic := range topics {
 				check[topic] = topic
-			}
-			for k := range readers {
-				if _, ok := check[k]; ok {
-					continue
-				} else {
-					readers[k].Stop()
-					weblogs[k].Close()
-					delete(readers, k)
-					delete(weblogs, k)
-					close(weblogs[k].exitChannel)
-				}
-			}
-		case <-ticker:
-			topics, err := redis.Strings(con.Do("SMEMBERS", logTopics))
-			if err != nil {
-				log.Println("fail to get topics")
-			}
-			for _, topic := range topics {
 				if _, ok := readers[topic]; ok {
 					continue
 				}
@@ -113,6 +94,17 @@ func main() {
 				}
 				weblogs[topic] = weblog
 				readers[topic] = r
+			}
+			for k := range readers {
+				if _, ok := check[k]; ok {
+					continue
+				} else {
+					readers[k].Stop()
+					weblogs[k].Close()
+					delete(readers, k)
+					delete(weblogs, k)
+					close(weblogs[k].exitChannel)
+				}
 			}
 		case <-termchan:
 			break
