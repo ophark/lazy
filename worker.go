@@ -102,6 +102,7 @@ func (m *Analyzer) elasticSearchBuildIndex() {
 	}
 	done <- true
 }
+
 func (m *Analyzer) parseLog(msg string) []string {
 	re := regexp.MustCompile("\\(|\\)|{|}|/")
 	t := strings.Split(re.ReplaceAllString(msg, " "), " ")
@@ -193,3 +194,156 @@ func (m *Learner) Learn() {
 	}
 }
 */
+
+type WebLog struct {
+	*redis.Pool
+	webLogFormat        []string
+	elasticSearchServer string
+	elasticSearchPort   string
+	elasticSearchIndex  string
+	topic               string
+	exitChannel         chan int
+	msgChannel          chan Record
+	sync.Mutex
+}
+
+func (m *WebLog) HandleMessage(msg *nsq.Message) error {
+	m.Lock()
+	defer m.Unlock()
+	rst := parserWebLog(msg.Body)
+	if len(m.webLogFormat) != len(rst) {
+		log.Printf("format error: %s\n", m.webLogFormat)
+		for _, v := range rst {
+			log.Printf("%s ", string(v))
+		}
+		log.Printf("\n")
+	} else {
+		message := make(map[string]interface{})
+		for i := 0; i < len(m.webLogFormat); i++ {
+			if m.webLogFormat[i] == "web_request" {
+				t := strings.Split(string(rst[i]), " ")
+				if len(t) != 3 {
+					log.Println("web_request err", string(rst[i]))
+					return nil
+				}
+				message["http_method"] = t[0]
+				message["uri"] = t[1]
+				message["http_version"] = t[2]
+			} else {
+				if m.webLogFormat[i] == "ignore" {
+					continue
+				}
+				message[m.webLogFormat[i]] = rst[i]
+			}
+		}
+		record := Record{
+			errChannel: make(chan error),
+			body:       message,
+			logType:    "webAccessLog",
+		}
+		m.msgChannel <- record
+		return <-record.errChannel
+	}
+	return nil
+}
+
+func (m *WebLog) elasticSearchBuildIndex() {
+	api.Domain = m.elasticSearchServer
+	api.Port = m.elasticSearchPort
+	indexor := core.NewBulkIndexorErrors(10, 60)
+	done := make(chan bool)
+	indexor.Run(done)
+	defer close(indexor.ErrorChannel)
+	go func() {
+		for errBuf := range indexor.ErrorChannel {
+			log.Println(errBuf.Err)
+		}
+	}()
+	var err error
+	con := m.Get()
+	defer con.Close()
+	for r := range m.msgChannel {
+		err = indexor.Index(m.elasticSearchIndex, r.logType, "", "", nil, r.body)
+		r.errChannel <- err
+	}
+	done <- true
+}
+
+func (m *WebLog) getLogFormat() {
+	con := m.Get()
+	defer con.Close()
+	t, e := redis.String(con.Do("GET", "weblogformat:"+m.topic))
+	if e != nil {
+		return
+	}
+	m.Lock()
+	defer m.Unlock()
+	m.webLogFormat = strings.Split(t, ",")
+}
+
+func (m *WebLog) syncLogFormat() {
+	ticker := time.Tick(time.Second * 600)
+	for {
+		select {
+		case <-ticker:
+			m.getLogFormat()
+		case <-m.exitChannel:
+			close(m.msgChannel)
+			return
+		}
+	}
+}
+
+func parserWebLog(buf []byte) [][]byte {
+	var tokens [][]byte
+	token := make([]byte, 0)
+	var lastChar byte
+	for _, v := range buf {
+		switch v {
+		case byte(' '):
+			fallthrough
+		case byte('['):
+			fallthrough
+		case byte(']'):
+			fallthrough
+		case byte('"'):
+			if len(token) > 0 {
+				if token[len(token)-1] == byte('\\') {
+					token = append(token, v)
+					continue
+				}
+				if lastChar == byte('"') {
+					if v != byte('"') {
+						token = append(token, v)
+						continue
+					}
+				}
+				if lastChar == byte('[') {
+					if v != byte(']') {
+						token = append(token, v)
+						continue
+					}
+				}
+				tokens = append(tokens, token)
+				token = make([]byte, 0)
+			} else {
+				if lastChar == byte('"') {
+					if v == byte('"') {
+						tokens = append(tokens, token)
+						token = make([]byte, 0)
+					}
+				}
+				if lastChar == byte('[') {
+					if v == byte(']') {
+						tokens = append(tokens, token)
+						token = make([]byte, 0)
+					}
+				}
+			}
+			lastChar = v
+		default:
+			token = append(token, v)
+		}
+	}
+	return tokens
+}

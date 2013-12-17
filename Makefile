@@ -7,6 +7,7 @@ all:
 	go build analyzer.go worker.go config.go
 	go build learner.go worker.go config.go
 	go build webui.go bayes.go config.go logtag.go
+	go build weblog.go worker.go config.go
 
 analyzer:
 	go build analyzer.go worker.go config.go 
@@ -16,6 +17,9 @@ web:
 
 learner:
 	go build learner.go worker.go config.go 
+
+weblog:
+	go build weblog.go worker.go config.go
 
 fmt:
 	go fmt
