@@ -36,6 +36,9 @@ type Analyzer struct {
 }
 
 func (m *Analyzer) Run() error {
+	m.getRegexp()
+	m.getBayes()
+	go m.elasticSearchBuildIndex()
 	var err error
 	m.reader, err = nsq.NewReader(m.analyzerTopic, m.analyzerChannel)
 	if err != nil {
@@ -53,7 +56,6 @@ func (m *Analyzer) Run() error {
 	}
 	go m.syncRegexp()
 	go m.syncBayes()
-	go m.elasticSearchBuildIndex()
 	return err
 }
 
@@ -142,7 +144,6 @@ func (m *Analyzer) parseLog(msg string) []string {
 
 func (m *Analyzer) syncBayes() {
 	ticker := time.Tick(time.Second * 600)
-	m.getBayes()
 	for {
 		select {
 		case <-ticker:
@@ -155,7 +156,6 @@ func (m *Analyzer) syncBayes() {
 
 func (m *Analyzer) syncRegexp() {
 	ticker := time.Tick(time.Second * 600)
-	m.getRegexp()
 	for {
 		select {
 		case <-ticker:

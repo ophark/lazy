@@ -30,6 +30,8 @@ type WebLogParser struct {
 }
 
 func (m *WebLogParser) Run() error {
+	m.getLogFormat()
+	go m.elasticSearchBuildIndex()
 	var err error
 	m.reader, err = nsq.NewReader(m.webLogTopic, m.webLogChannel)
 	if err != nil {
@@ -47,7 +49,6 @@ func (m *WebLogParser) Run() error {
 		}
 	}
 	go m.syncLogFormat()
-	go m.elasticSearchBuildIndex()
 	return err
 }
 
@@ -126,7 +127,6 @@ func (m *WebLogParser) getLogFormat() {
 
 func (m *WebLogParser) syncLogFormat() {
 	ticker := time.Tick(time.Second * 600)
-	m.getLogFormat()
 	for {
 		select {
 		case <-ticker:
