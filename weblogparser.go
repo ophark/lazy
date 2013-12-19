@@ -7,9 +7,9 @@ import (
 	"github.com/mattbaird/elastigo/api"
 	"github.com/mattbaird/elastigo/core"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
-	"strconv"
 	"time"
 )
 
@@ -71,7 +71,7 @@ func (m *WebLogParser) HandleMessage(msg *nsq.Message) error {
 				case "int":
 					t, err := strconv.ParseInt(string(rst[i]), 10, 32)
 					if err != nil {
-						log.Println("log token err:",rst[i], " do not match ", key)
+						log.Println("log token err:", rst[i], " do not match ", key)
 						return nil
 					}
 					message[key] = t
@@ -88,7 +88,7 @@ func (m *WebLogParser) HandleMessage(msg *nsq.Message) error {
 				case "float":
 					t, err := strconv.ParseFloat(string(rst[i]), 64)
 					if err != nil {
-						log.Println("log token err:",rst[i], " do not match ", key)
+						log.Println("log token err:", rst[i], " do not match ", key)
 						return nil
 					}
 					message[key] = t

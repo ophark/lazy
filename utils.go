@@ -25,7 +25,7 @@ func ReadConfig(file string) (Config, error) {
 }
 
 type LogFormat struct {
-	Names []string `json: "names"`
+	Names  []string          `json: "names"`
 	Values map[string]string `json: "values"`
 }
 
