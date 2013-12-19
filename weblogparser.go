@@ -94,7 +94,7 @@ func (m *WebLogParser) HandleMessage(msg *nsq.Message) error {
 					}
 					message[key] = t
 				default:
-					message[key] = rst[i]
+					message[key] = string(rst[i])
 				}
 			}
 		}
