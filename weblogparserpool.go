@@ -18,7 +18,6 @@ type WebLogParserPool struct {
 	elasticSearchPort   string
 	elasticSearchIndex  string
 	exitChannel         chan int
-	msgChannel          chan Record
 	webLogParserList    map[string]*WebLogParser
 }
 
@@ -73,6 +72,7 @@ func (m *WebLogParserPool) getWebLogs() {
 				maxInFlight:         m.maxInFlight,
 				lookupdList:         m.lookupdList,
 				exitChannel:         make(chan int),
+				msgChannel:          make(chan Record),
 			}
 			if err := w.Run(); err != nil {
 				log.Println(topic, err)

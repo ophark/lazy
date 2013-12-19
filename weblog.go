@@ -45,7 +45,6 @@ func main() {
 		logChannel:          webLogChannel,
 		lookupdList:         strings.Split(lookupdAddresses, ","),
 		maxInFlight:         int(max),
-		msgChannel:          make(chan Record),
 		elasticSearchServer: elasticSearchServer,
 		elasticSearchPort:   elasticSearchPort,
 		elasticSearchIndex:  elasticSearchIndex,
