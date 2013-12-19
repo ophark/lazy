@@ -23,3 +23,15 @@ func ReadConfig(file string) (Config, error) {
 	}
 	return setting, nil
 }
+
+type LogFormat struct {
+	Names []string `json: "names"`
+	Values map[string]string `json: "values"`
+}
+
+// Record is used to pass data to elasticsearch
+type Record struct {
+	logType    string
+	body       map[string]interface{}
+	errChannel chan error
+}

@@ -4,22 +4,22 @@
 
 MAKEFLAGS = -s
 all:
-	go build analyzer.go worker.go config.go
-	go build learner.go worker.go config.go
-	go build webui.go bayes.go config.go logtag.go
-	go build weblog.go worker.go config.go
+	go build loganalyzer.go analyzer.go utils.go
+	go build learner.go worker.go utils.go
+	go build webui.go bayes.go utils.go logtag.go
+	go build weblog.go worker.go utils.go
 
 analyzer:
-	go build analyzer.go worker.go config.go 
+	go build loganalyzer.go analyzer.go utils.go
 
 web:
-	go build webui.go bayes.go config.go logtag.go
+	go build webui.go bayes.go utils.go logtag.go
 
 learner:
-	go build learner.go worker.go config.go 
+	go build learner.go worker.go utils.go 
 
 weblog:
-	go build weblog.go worker.go config.go
+	go build weblog.go weblogparser.go weblogparserpool.go utils.go
 
 fmt:
 	go fmt
