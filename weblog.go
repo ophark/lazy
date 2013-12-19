@@ -24,7 +24,7 @@ func main() {
 
 	lookupdAddresses, _ := c["lookupd_addresses"]
 	maxinflight, _ := c["maxinflight"]
-	logChannel, _ := c["log_channel"]
+	webLogChannel, _ := c["weblog_channel"]
 	redisServer, _ := c["redis_server"]
 	elasticSearchServer, _ := c["elasticsearch_host"]
 	elasticSearchPort, _ := c["elasticsearch_port"]
@@ -42,7 +42,7 @@ func main() {
 	max, _ := strconv.ParseInt(maxinflight, 10, 32)
 	tasks := &WebLogParserPool{
 		Pool:                redisPool,
-		logChannel:          logChannel,
+		logChannel:          webLogChannel,
 		lookupdList:         strings.Split(lookupdAddresses, ","),
 		maxInFlight:         int(max),
 		msgChannel:          make(chan Record),
