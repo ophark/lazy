@@ -8,6 +8,8 @@
     "redis_server":"127.0.0.1:6379",
     "elasticsearch_host":"127.0.0.1",
     "elasticsearch_port":"9200",
-    "elasticsearch_index":"logaudit",
-    "elasticsearch_weblog_index": "weblog"
+    "elasticsearch_syslog_index":"systemlog",
+    "elasticsearch_syslog_index_ttl":"604800",
+    "elasticsearch_weblog_index": "weblog",
+    "elasticsearch_weblog_index_ttl":"604800"
 }

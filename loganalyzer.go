@@ -33,7 +33,8 @@ func main() {
 	redisServer, _ := c["redis_server"]
 	elasticSearchServer, _ := c["elasticsearch_host"]
 	elasticSearchPort, _ := c["elasticsearch_port"]
-	elasticSearchIndex, _ := c["elasticsearch_index"]
+	elasticSearchIndex, _ := c["elasticsearch_syslog_index"]
+	elasticSearchIndexTTL, _ := c["elasticsearch_syslog_index_ttl"]
 
 	redisCon := func() (redis.Conn, error) {
 		c, err := redis.Dial("tcp", redisServer)
@@ -46,19 +47,20 @@ func main() {
 	defer redisPool.Close()
 	max, _ := strconv.ParseInt(maxinflight, 10, 32)
 	analyzer := &Analyzer{
-		Pool:                redisPool,
-		writer:              nsq.NewWriter(nsqdAddr),
-		maxInFlight:         int(max),
-		lookupdList:         strings.Split(lookupdAddresses, ","),
-		analyzerTopic:       analyzerTopic,
-		analyzerChannel:     analyzerChannel,
-		trainTopic:          trainTopic,
-		msgChannel:          make(chan Record),
-		exitChannel:         make(chan int),
-		regexMap:            make(map[string][]*regexp.Regexp),
-		elasticSearchServer: elasticSearchServer,
-		elasticSearchPort:   elasticSearchPort,
-		elasticSearchIndex:  elasticSearchIndex,
+		Pool:                  redisPool,
+		writer:                nsq.NewWriter(nsqdAddr),
+		maxInFlight:           int(max),
+		lookupdList:           strings.Split(lookupdAddresses, ","),
+		analyzerTopic:         analyzerTopic,
+		analyzerChannel:       analyzerChannel,
+		trainTopic:            trainTopic,
+		msgChannel:            make(chan Record),
+		exitChannel:           make(chan int),
+		regexMap:              make(map[string][]*regexp.Regexp),
+		elasticSearchServer:   elasticSearchServer,
+		elasticSearchPort:     elasticSearchPort,
+		elasticSearchIndex:    elasticSearchIndex,
+		elasticSearchIndexTTL: elasticSearchIndexTTL,
 	}
 	if err := analyzer.Run(); err != nil {
 		log.Fatal(err)
