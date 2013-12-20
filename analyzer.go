@@ -84,14 +84,14 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	}
 	record := Record{
 		errChannel: make(chan error),
-		logType:    "",
+		logType:    "chaos",
 	}
 	m.Lock()
 	_, likely, strict := m.c.LogScores(words)
 	rg, ok := m.regexMap[tag]
 	m.Unlock()
 	if strict && likely > 0 {
-		record.logType += "bayes"
+		record.logType = "bayes"
 	}
 	if !strict {
 		m.writer.Publish(m.trainTopic, msg.Body)
@@ -99,7 +99,11 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	if ok {
 		for _, r := range rg {
 			if r.MatchString(message["content"].(string)) {
-				record.logType += "regexp"
+				if record.logType == "chaos" {
+					record.logType = "regexp"
+				} else {
+					record.logType += "_regexp"
+				}
 				break
 			}
 		}
