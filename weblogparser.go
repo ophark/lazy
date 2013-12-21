@@ -15,17 +15,18 @@ import (
 
 type WebLogParser struct {
 	*redis.Pool
-	reader              *nsq.Reader
-	maxInFlight         int
-	lookupdList         []string
-	elasticSearchServer string
-	elasticSearchPort   string
-	elasticSearchIndex  string
-	webLogFormat        *LogFormat
-	webLogTopic         string
-	webLogChannel       string
-	exitChannel         chan int
-	msgChannel          chan Record
+	reader                *nsq.Reader
+	maxInFlight           int
+	lookupdList           []string
+	elasticSearchServer   string
+	elasticSearchPort     string
+	elasticSearchIndex    string
+	elasticSearchIndexTTL string
+	webLogFormat          *LogFormat
+	webLogTopic           string
+	webLogChannel         string
+	exitChannel           chan int
+	msgChannel            chan Record
 	sync.Mutex
 }
 
@@ -149,7 +150,7 @@ func (m *WebLogParser) elasticSearchBuildIndex() {
 		case errBuf := <-indexor.ErrorChannel:
 			log.Println(errBuf.Err)
 		case r := <-m.msgChannel:
-			err = indexor.Index(m.elasticSearchIndex, r.logType, "", "", nil, r.body)
+			err = indexor.Index(m.elasticSearchIndex, r.logType, "", m.elasticSearchIndexTTL, nil, r.body)
 			r.errChannel <- err
 		case <-m.exitChannel:
 			break

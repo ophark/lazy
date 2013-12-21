@@ -10,15 +10,16 @@ import (
 type WebLogParserPool struct {
 	sync.Mutex
 	*redis.Pool
-	maxInFlight         int
-	lookupdList         []string
-	checklist           map[string]string
-	logChannel          string
-	elasticSearchServer string
-	elasticSearchPort   string
-	elasticSearchIndex  string
-	exitChannel         chan int
-	webLogParserList    map[string]*WebLogParser
+	maxInFlight           int
+	lookupdList           []string
+	checklist             map[string]string
+	logChannel            string
+	elasticSearchServer   string
+	elasticSearchPort     string
+	elasticSearchIndex    string
+	elasticSearchIndexTTL string
+	exitChannel           chan int
+	webLogParserList      map[string]*WebLogParser
 }
 
 func (m *WebLogParserPool) Run() {
@@ -63,16 +64,17 @@ func (m *WebLogParserPool) getWebLogs() {
 		m.checklist[topic] = topic
 		if _, ok := m.webLogParserList[topic]; !ok {
 			w := &WebLogParser{
-				Pool:                m.Pool,
-				webLogTopic:         topic,
-				webLogChannel:       m.logChannel,
-				elasticSearchServer: m.elasticSearchServer,
-				elasticSearchPort:   m.elasticSearchPort,
-				elasticSearchIndex:  m.elasticSearchIndex,
-				maxInFlight:         m.maxInFlight,
-				lookupdList:         m.lookupdList,
-				exitChannel:         make(chan int),
-				msgChannel:          make(chan Record),
+				Pool:                  m.Pool,
+				webLogTopic:           topic,
+				webLogChannel:         m.logChannel,
+				elasticSearchServer:   m.elasticSearchServer,
+				elasticSearchPort:     m.elasticSearchPort,
+				elasticSearchIndex:    m.elasticSearchIndex,
+				elasticSearchIndexTTL: m.elasticSearchIndexTTL,
+				maxInFlight:           m.maxInFlight,
+				lookupdList:           m.lookupdList,
+				exitChannel:           make(chan int),
+				msgChannel:            make(chan Record),
 			}
 			if err := w.Run(); err != nil {
 				log.Println(topic, err)
