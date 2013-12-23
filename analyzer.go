@@ -84,6 +84,7 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	}
 	record := Record{
 		errChannel: make(chan error),
+		ttl:        m.elasticSearchIndexTTL,
 		logType:    "chaos",
 	}
 	m.Lock()
@@ -127,7 +128,7 @@ func (m *Analyzer) elasticSearchBuildIndex() {
 		case errBuf := <-indexor.ErrorChannel:
 			log.Println(errBuf.Err)
 		case r := <-m.msgChannel:
-			err = indexor.Index(m.elasticSearchIndex, r.logType, "", m.elasticSearchIndexTTL, nil, r.body)
+			err = indexor.Index(m.elasticSearchIndex, r.logType, "", r.ttl, nil, r.body)
 			con.Do("SADD", "logtags", r.body["tag"])
 			r.errChannel <- err
 		case <-m.exitChannel:
