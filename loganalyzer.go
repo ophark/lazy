@@ -43,11 +43,9 @@ func main() {
 		}
 		return c, err
 	}
-	redisPool := redis.NewPool(redisCon, 3)
-	defer redisPool.Close()
 	max, _ := strconv.ParseInt(maxinflight, 10, 32)
 	analyzer := &Analyzer{
-		Pool:                  redisPool,
+		Pool:                  redis.NewPool(redisCon, 3),
 		writer:                nsq.NewWriter(nsqdAddr),
 		maxInFlight:           int(max),
 		lookupdList:           strings.Split(lookupdAddresses, ","),

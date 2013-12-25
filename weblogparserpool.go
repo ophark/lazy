@@ -33,6 +33,7 @@ func (m *WebLogParserPool) Stop() {
 	for k := range m.webLogParserList {
 		m.webLogParserList[k].Stop()
 	}
+	m.Pool.Stop()
 }
 
 func (m *WebLogParserPool) syncWebLogs() {

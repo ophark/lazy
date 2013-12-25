@@ -64,6 +64,7 @@ func (m *Analyzer) Stop() {
 	m.reader.Stop()
 	m.writer.Stop()
 	close(m.exitChannel)
+	m.Pool.Close()
 }
 
 // HandleMessage is nsq reader's handle

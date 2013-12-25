@@ -38,11 +38,9 @@ func main() {
 		}
 		return c, err
 	}
-	redisPool := redis.NewPool(redisCon, 3)
-	defer redisPool.Close()
 	max, _ := strconv.ParseInt(maxinflight, 10, 32)
 	tasks := &WebLogParserPool{
-		Pool:                  redisPool,
+		Pool:                  redis.NewPool(redisCon, 3),
 		logChannel:            webLogChannel,
 		lookupdList:           strings.Split(lookupdAddresses, ","),
 		maxInFlight:           int(max),
