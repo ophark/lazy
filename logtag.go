@@ -16,7 +16,11 @@ func LogTagIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "GET")
 	con := redisPool.Get()
 	defer con.Close()
-	tags, _ := redis.Strings(con.Do("SMEMBERS", "logtags"))
+	tags, err := redis.Strings(con.Do("SMEMBERS", "logtags"))
+	if err != nil && err != redis.ErrNil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	var rst []interface{}
 	for _, tag := range tags {
 		query := make(map[string]interface{})
@@ -24,20 +28,6 @@ func LogTagIndex(w http.ResponseWriter, r *http.Request) {
 		query["url"] = "/api/v1/logtag/" + tag
 		rst = append(rst, query)
 	}
-	body, _ := json.Marshal(rst)
-	w.Write(body)
-}
-
-// LogTagShow GET /logtag/{name}
-func LogTagShow(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=\"utf-8\"")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET")
-	tag := mux.Vars(r)["name"]
-	rst := make(map[string]interface{})
-	rst["name"] = tag
-	rst["regex"] = "/api/v1/logtag/" + tag + "/regex"
-	rst["error_log"] = "/api/v1/logtag/" + tag + "/err"
 	body, _ := json.Marshal(rst)
 	w.Write(body)
 }
@@ -52,23 +42,26 @@ func LogTagDelete(w http.ResponseWriter, r *http.Request) {
 	_, err := con.Do("DEL", "tag:"+tag)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		return
 	}
 }
 
-// LogTagRegexShow GET /logtag/{tagname}/regex
-func LogTagRegexShow(w http.ResponseWriter, r *http.Request) {
+// LogTagShow GET /logtag/{tagname}
+func LogTagShow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=\"utf-8\"")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET")
 	tag := mux.Vars(r)["tagname"]
 	con := redisPool.Get()
 	defer con.Close()
-	tags, _ := redis.Strings(con.Do("SMEMBERS", "tag:"+tag))
+	regexps, err := redis.Strings(con.Do("SMEMBERS", "tag:"+tag))
+	if err != nil && err != redis.ErrNil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	rst := make(map[string]interface{})
 	rst["name"] = tag
 	var querys []interface{}
-	for _, t := range tags {
+	for _, t := range regexps {
 		query := make(map[string]interface{})
 		query["regexp"] = t
 		rg := base64.URLEncoding.EncodeToString([]byte(t))
@@ -82,6 +75,9 @@ func LogTagRegexShow(w http.ResponseWriter, r *http.Request) {
 
 // LogTagRegexCreate POST /logtag/{tagname}/regex
 func LogTagRegexCreate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=\"utf-8\"")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST")
 	var items map[string]string
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&items); err != nil {
@@ -89,9 +85,6 @@ func LogTagRegexCreate(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json; charset=\"utf-8\"")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST")
 	tag := mux.Vars(r)["tagname"]
 	con := redisPool.Get()
 	defer con.Close()
@@ -100,7 +93,7 @@ func LogTagRegexCreate(w http.ResponseWriter, r *http.Request) {
 		_, err := con.Do("SADD", "tag:"+tag, rg)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			break
+			return
 		}
 		query := make(map[string]interface{})
 		query["name"] = tag
@@ -126,5 +119,8 @@ func LogTagRegexDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	con := redisPool.Get()
 	defer con.Close()
-	con.Do("SREM", "tag:"+tag, rg)
+	_, err = con.Do("SREM", "tag:"+tag, rg)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+	}
 }

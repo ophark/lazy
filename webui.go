@@ -47,17 +47,20 @@ func main() {
 	s.HandleFunc("/logtag/{tagname}/regex/{name}", LogTagRegexDelete).
 		Methods("DELETE")
 
-	s.HandleFunc("/bayes", BayesIndex).
+	s.HandleFunc("/classifier", ClassifierIndex).
 		Methods("GET")
-	s.HandleFunc("/bayes/normal", BayesNormalCreate).
+	s.HandleFunc("/classifier", ClassifierCreate).
 		Methods("POST").
 		Headers("Content-Type", "application/json")
-	s.HandleFunc("/bayes/normal/{word}", BayesNormalDelete).
+	s.HandleFunc("/classifier/{classify}/{word}", ClassifierDelete).
 		Methods("DELETE")
-	s.HandleFunc("/bayes/error", BayesErrorCreate).
+
+	s.HandleFunc("/logformat", LogFormatIndex).
+		Methods("GET")
+	s.HandleFunc("/logformat", LogFormatCreate).
 		Methods("POST").
 		Headers("Content-Type", "application/json")
-	s.HandleFunc("/bayes/error/{word}", BayesErrorDelete).
+	s.HandleFunc("/logformat/{name}", LogFormatDelete).
 		Methods("DELETE")
 
 	http.Handle("/", r)

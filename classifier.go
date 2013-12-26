@@ -8,27 +8,40 @@ import (
 	"net/http"
 )
 
-// BayesIndex GET /bayes
-func BayesIndex(w http.ResponseWriter, r *http.Request) {
+// ClassifierIndex GET /classifier
+func ClassifierIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=\"utf-8\"")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET")
 	con := redisPool.Get()
 	defer con.Close()
-	n, _ := redis.Strings(con.Do("SMEMBERS", "NormalLog"))
-	e, _ := redis.Strings(con.Do("SMEMBERS", "ErrorLog"))
+	classifiers, err := redis.Strings(con.Do("SMEMBERS", "classifiers"))
+	if err != nil && err != redis.ErrNil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	rst := make(map[string][]string)
-	rst["normal_word"] = n
-	rst["error_word"] = e
+	for _, c := range classifiers {
+		words, err := redis.Strings(con.Do("SMEMBERS", c))
+		if err != nil && err != redis.ErrNil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		rst[c] = words
+	}
 	body, _ := json.Marshal(rst)
 	w.Write(body)
 }
 
-// BayesNormalCreate POST /bayes/normal
-func BayesNormalCreate(w http.ResponseWriter, r *http.Request) {
-	var items []string
+// ClassifierCreate POST /classifier
+func ClassifierCreate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=\"utf-8\"")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST")
+	var items map[string][]string
 	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(&items); err != nil {
+	var err error
+	if err = json.NewDecoder(r.Body).Decode(&items); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Println(err)
 		return
@@ -38,75 +51,38 @@ func BayesNormalCreate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "POST")
 	con := redisPool.Get()
 	defer con.Close()
-	for _, k := range items {
-		_, err := con.Do("SADD", "NormalLog", k)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			break
+	for c, words := range items {
+		for _, k := range words {
+			_, err = con.Do("SADD", c, k)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 		}
+		con.Do("SADD", "classifiers", c)
 	}
-}
-
-// BayesNormalDelete DELETE /bayes/normal/{word}
-func BayesNormalDelete(w http.ResponseWriter, r *http.Request) {
-	var items []string
-	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(&items); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		log.Println(err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json; charset=\"utf-8\"")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "DELETE")
-	word := mux.Vars(r)["word"]
-	con := redisPool.Get()
-	defer con.Close()
-	_, err := con.Do("SREM", "NormalLog", word)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 }
 
-// BayesErrorCreate POST /bayes/error
-func BayesErrorCreate(w http.ResponseWriter, r *http.Request) {
-	var items []string
-	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(&items); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		log.Println(err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json; charset=\"utf-8\"")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST")
-	con := redisPool.Get()
-	defer con.Close()
-	for _, k := range items {
-		_, err := con.Do("SADD", "ErrorLog", k)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			break
-		}
-	}
-}
-
-// BayesErrorDelete DELETE /bayes/normal/{word}
-func BayesErrorDelete(w http.ResponseWriter, r *http.Request) {
-	var items []string
-	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(&items); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		log.Println(err)
-		return
-	}
+// ClassifierDelete DELETE /classifier/{word}
+func ClassifierDelete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=\"utf-8\"")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "DELETE")
 	word := mux.Vars(r)["word"]
+	classify := mux.Vars(r)["classify"]
 	con := redisPool.Get()
 	defer con.Close()
-	_, err := con.Do("SREM", "ErrorLog", word)
+	_, err := con.Do("SREM", classify, word)
+	if err == nil {
+		n, e := redis.Int(con.Do("SCARD", classify))
+		if e == nil && n == 0 {
+			_, err = con.Do("DEL", classify)
+		}
+	}
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
