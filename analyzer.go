@@ -178,6 +178,7 @@ func (m *Analyzer) getBayes() {
 	defer con.Close()
 	classifiers, err := redis.Strings(con.Do("SMEMBERS", "classifiers"))
 	if err != nil {
+		log.Println("fail to get classifiers", classifiers)
 		return
 	}
 	if len(classifiers) < 2 {
@@ -186,8 +187,7 @@ func (m *Analyzer) getBayes() {
 	}
 	var classifierList []bayesian.Class
 	for _, c := range classifiers {
-		var name = bayesian.Class(c)
-		classifierList = append(classifierList, name)
+		classifierList = append(classifierList, bayesian.Class(c))
 	}
 	m.Lock()
 	defer m.Unlock()
@@ -196,6 +196,7 @@ func (m *Analyzer) getBayes() {
 	for _, c := range classifierList {
 		words, err := redis.Strings(con.Do("SMEMBERS", "classifier:"+string(c)))
 		if err != nil {
+			log.Println("fail to get words", c)
 			return
 		}
 		m.c.Learn(words, c)
