@@ -80,7 +80,10 @@ func ClassifierDelete(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		n, e := redis.Int(con.Do("SCARD", classify))
 		if e == nil && n == 0 {
-			_, err = con.Do("DEL", classify)
+			_, err = con.Do("SREM", "classifiers", classify)
+			if err == nil {
+				_, err = con.Do("DEL", classify)
+			}
 		}
 	}
 	if err != nil {
