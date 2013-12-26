@@ -24,12 +24,12 @@ func main() {
 
 	lookupdAddresses, _ := c["lookupd_addresses"]
 	maxinflight, _ := c["maxinflight"]
-	webLogChannel, _ := c["weblog_channel"]
+	logChannel, _ := c["log_channel"]
 	redisServer, _ := c["redis_server"]
 	elasticSearchServer, _ := c["elasticsearch_host"]
 	elasticSearchPort, _ := c["elasticsearch_port"]
-	elasticSearchIndex, _ := c["elasticsearch_weblog_index"]
-	elasticSearchIndexTTL, _ := c["elasticsearch_weblog_index_ttl"]
+	elasticSearchIndex, _ := c["elasticsearch_log_index"]
+	elasticSearchIndexTTL, _ := c["elasticsearch_log_index_ttl"]
 
 	redisCon := func() (redis.Conn, error) {
 		c, err := redis.Dial("tcp", redisServer)
@@ -39,9 +39,9 @@ func main() {
 		return c, err
 	}
 	max, _ := strconv.ParseInt(maxinflight, 10, 32)
-	tasks := &WebLogParserPool{
+	tasks := &LogParserPool{
 		Pool:                  redis.NewPool(redisCon, 3),
-		logChannel:            webLogChannel,
+		logChannel:            logChannel,
 		lookupdList:           strings.Split(lookupdAddresses, ","),
 		maxInFlight:           int(max),
 		elasticSearchServer:   elasticSearchServer,
@@ -49,7 +49,7 @@ func main() {
 		elasticSearchIndex:    elasticSearchIndex,
 		elasticSearchIndexTTL: elasticSearchIndexTTL,
 		exitChannel:           make(chan int),
-		webLogParserList:      make(map[string]*WebLogParser),
+		logParserList:         make(map[string]*LogParser),
 	}
 	tasks.Run()
 	termchan := make(chan os.Signal, 1)

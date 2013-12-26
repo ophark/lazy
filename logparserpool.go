@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-type WebLogParserPool struct {
+type LogParserPool struct {
 	sync.Mutex
 	*redis.Pool
 	maxInFlight           int
@@ -19,41 +19,41 @@ type WebLogParserPool struct {
 	elasticSearchIndex    string
 	elasticSearchIndexTTL string
 	exitChannel           chan int
-	webLogParserList      map[string]*WebLogParser
+	logParserList         map[string]*LogParser
 }
 
-func (m *WebLogParserPool) Run() {
-	go m.syncWebLogs()
+func (m *LogParserPool) Run() {
+	go m.syncLogTopics()
 }
 
-func (m *WebLogParserPool) Stop() {
+func (m *LogParserPool) Stop() {
 	close(m.exitChannel)
 	m.Lock()
 	defer m.Unlock()
-	for k := range m.webLogParserList {
-		m.webLogParserList[k].Stop()
+	for k := range m.logParserList {
+		m.logParserList[k].Stop()
 	}
-	m.Pool.Stop()
+	m.Pool.Close()
 }
 
-func (m *WebLogParserPool) syncWebLogs() {
+func (m *LogParserPool) syncLogTopics() {
 	ticker := time.Tick(time.Second * 600)
-	m.getWebLogs()
+	m.getLogTopics()
 	for {
 		select {
 		case <-ticker:
-			m.getWebLogs()
-			m.CheckWebParser()
+			m.getLogTopics()
+			m.checkLogParsers()
 		case <-m.exitChannel:
 			return
 		}
 	}
 }
 
-func (m *WebLogParserPool) getWebLogs() {
+func (m *LogParserPool) getLogTopics() {
 	con := m.Get()
 	defer con.Close()
-	topics, err := redis.Strings(con.Do("SMEMBERS", "weblogtopics"))
+	topics, err := redis.Strings(con.Do("SMEMBERS", "logtopics"))
 	if err != nil {
 		log.Println("fail to get topics")
 		return
@@ -63,11 +63,11 @@ func (m *WebLogParserPool) getWebLogs() {
 	m.checklist = make(map[string]string)
 	for _, topic := range topics {
 		m.checklist[topic] = topic
-		if _, ok := m.webLogParserList[topic]; !ok {
-			w := &WebLogParser{
+		if _, ok := m.logParserList[topic]; !ok {
+			w := &LogParser{
 				Pool:                  m.Pool,
-				webLogTopic:           topic,
-				webLogChannel:         m.logChannel,
+				logTopic:              topic,
+				logChannel:            m.logChannel,
 				elasticSearchServer:   m.elasticSearchServer,
 				elasticSearchPort:     m.elasticSearchPort,
 				elasticSearchIndex:    m.elasticSearchIndex,
@@ -81,18 +81,18 @@ func (m *WebLogParserPool) getWebLogs() {
 				log.Println(topic, err)
 				continue
 			}
-			m.webLogParserList[topic] = w
+			m.logParserList[topic] = w
 		}
 	}
 }
 
-func (m *WebLogParserPool) CheckWebParser() {
+func (m *LogParserPool) checkLogParsers() {
 	m.Lock()
 	defer m.Unlock()
-	for k := range m.webLogParserList {
+	for k := range m.logParserList {
 		if _, ok := m.checklist[k]; !ok {
-			m.webLogParserList[k].Stop()
-			delete(m.webLogParserList, k)
+			m.logParserList[k].Stop()
+			delete(m.logParserList, k)
 		}
 	}
 }

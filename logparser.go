@@ -11,30 +11,30 @@ import (
 	"time"
 )
 
-type WebLogParser struct {
+type LogParser struct {
+	sync.Mutex
 	*redis.Pool
-	reader                *nsq.Reader
 	maxInFlight           int
 	lookupdList           []string
 	elasticSearchServer   string
 	elasticSearchPort     string
 	elasticSearchIndex    string
 	elasticSearchIndexTTL string
-	webLogFormat          *LogFormat
-	webLogTopic           string
-	webLogChannel         string
+	reader                *nsq.Reader
+	logFormat             *LogFormat
+	logTopic              string
+	logChannel            string
 	exitChannel           chan int
 	msgChannel            chan Record
-	sync.Mutex
 }
 
-func (m *WebLogParser) Run() error {
+func (m *LogParser) Run() error {
 	m.getLogFormat()
 	go m.elasticSearchBuildIndex()
 	var err error
-	m.reader, err = nsq.NewReader(m.webLogTopic, m.webLogChannel)
+	m.reader, err = nsq.NewReader(m.logTopic, m.logChannel)
 	if err != nil {
-		log.Println(m.webLogTopic, err)
+		log.Println(m.logTopic, err)
 		return err
 	}
 	m.reader.SetMaxInFlight(m.maxInFlight)
@@ -51,16 +51,16 @@ func (m *WebLogParser) Run() error {
 	return err
 }
 
-func (m *WebLogParser) Stop() {
+func (m *LogParser) Stop() {
 	m.reader.Stop()
 	close(m.exitChannel)
 }
 
-func (m *WebLogParser) HandleMessage(msg *nsq.Message) error {
+func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 	m.Lock()
 	defer m.Unlock()
 	rst := generateLogTokens(msg.Body)
-	message, err := m.webLogFormat.Parser(rst)
+	message, err := m.logFormat.Parser(rst)
 	if err != nil {
 		log.Println(err)
 		return nil
@@ -69,16 +69,16 @@ func (m *WebLogParser) HandleMessage(msg *nsq.Message) error {
 		errChannel: make(chan error),
 		body:       message,
 		ttl:        m.elasticSearchIndexTTL,
-		logType:    m.webLogTopic,
+		logType:    m.logTopic,
 	}
 	m.msgChannel <- record
 	return <-record.errChannel
 }
 
-func (m *WebLogParser) getLogFormat() {
+func (m *LogParser) getLogFormat() {
 	con := m.Get()
 	defer con.Close()
-	body, e := con.Do("GET", "weblogformat:"+m.webLogTopic)
+	body, e := con.Do("GET", "logformat:"+m.logTopic)
 	if e != nil {
 		return
 	}
@@ -86,12 +86,12 @@ func (m *WebLogParser) getLogFormat() {
 	defer m.Unlock()
 	var logFormat LogFormat
 	if err := json.Unmarshal(body.([]byte), &logFormat); err == nil {
-		m.webLogFormat = &logFormat
+		m.logFormat = &logFormat
 	}
 
 }
 
-func (m *WebLogParser) syncLogFormat() {
+func (m *LogParser) syncLogFormat() {
 	ticker := time.Tick(time.Second * 600)
 	for {
 		select {
@@ -103,7 +103,7 @@ func (m *WebLogParser) syncLogFormat() {
 	}
 }
 
-func (m *WebLogParser) elasticSearchBuildIndex() {
+func (m *LogParser) elasticSearchBuildIndex() {
 	api.Domain = m.elasticSearchServer
 	api.Port = m.elasticSearchPort
 	indexor := core.NewBulkIndexorErrors(10, 60)
