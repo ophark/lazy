@@ -19,6 +19,7 @@ type Analyzer struct {
 	*redis.Pool
 	reader                *nsq.Reader
 	writer                *nsq.Writer
+	classifiers           []string
 	c                     *bayesian.Classifier
 	analyzerTopic         string
 	analyzerChannel       string
@@ -91,13 +92,12 @@ func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
 	m.Lock()
 	_, likely, strict := m.c.LogScores(words)
 	rg, ok := m.regexMap[tag]
-	m.Unlock()
-	if strict && likely > 0 {
-		record.logType = "bayes"
-	}
-	if !strict {
+	if strict {
+		record.logType = m.classifiers[likely]
+	} else {
 		m.writer.Publish(m.trainTopic, msg.Body)
 	}
+	m.Unlock()
 	if ok {
 		for _, r := range rg {
 			if r.MatchString(message["content"].(string)) {
@@ -174,17 +174,32 @@ func (m *Analyzer) syncRegexp() {
 }
 
 func (m *Analyzer) getBayes() {
-	var NormalLog = bayesian.Class("NormalLog")
-	var ErrorLog = bayesian.Class("ErrorLog")
 	con := m.Get()
 	defer con.Close()
-	n, _ := redis.Strings(con.Do("SMEMBERS", "NormalLog"))
-	e, _ := redis.Strings(con.Do("SMEMBERS", "ErrorLog"))
+	classifiers, err := redis.Strings(con.Do("SMEMBERS", "classifiers"))
+	if err != nil {
+		return
+	}
+	if len(classifiers) < 2 {
+		log.Println("classifiers is less than 2")
+		return
+	}
+	var classifierList []bayesian.Class
+	for _, c := range classifiers {
+		var name = bayesian.Class(c)
+		classifierList = append(classifierList, name)
+	}
 	m.Lock()
 	defer m.Unlock()
-	m.c = bayesian.NewClassifier(NormalLog, ErrorLog)
-	m.c.Learn(n, NormalLog)
-	m.c.Learn(e, ErrorLog)
+	m.classifiers = classifiers
+	m.c = bayesian.NewClassifier(classifierList...)
+	for _, c := range classifierList {
+		words, err := redis.Strings(con.Do("SMEMBERS", "classifier:"+string(c)))
+		if err != nil {
+			return
+		}
+		m.c.Learn(words, c)
+	}
 }
 
 func (m *Analyzer) getRegexp() {
