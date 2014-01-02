@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/bitly/go-nsq"
 	"github.com/garyburd/redigo/redis"
 	"github.com/jbrukh/bayesian"
@@ -124,12 +125,17 @@ func (m *Analyzer) elasticSearchBuildIndex() {
 	var err error
 	con := m.Get()
 	defer con.Close()
+	ticker := time.Tick(time.Second * 600)
+	var indexPatten string
 	for {
 		select {
+		case <-ticker:
+			y, m, d := time.Now().Date()
+			indexPatten = fmt.Sprintf("-%d.%d.%d", y, m, d)
 		case errBuf := <-indexor.ErrorChannel:
 			log.Println(errBuf.Err)
 		case r := <-m.msgChannel:
-			err = indexor.Index(m.elasticSearchIndex, r.logType, "", r.ttl, nil, r.body)
+			err = indexor.Index(m.elasticSearchIndex+indexPatten, r.logType, "", r.ttl, nil, r.body)
 			con.Do("SADD", "logtags", r.body["tag"])
 			r.errChannel <- err
 		case <-m.exitChannel:
