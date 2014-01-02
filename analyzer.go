@@ -126,12 +126,13 @@ func (m *Analyzer) elasticSearchBuildIndex() {
 	con := m.Get()
 	defer con.Close()
 	ticker := time.Tick(time.Second * 600)
-	var indexPatten string
+	yy, mm, dd := time.Now().Date()
+	indexPatten := fmt.Sprintf("-%d.%d.%d", yy, mm, dd)
 	for {
 		select {
 		case <-ticker:
-			y, m, d := time.Now().Date()
-			indexPatten = fmt.Sprintf("-%d.%d.%d", y, m, d)
+			yy, mm, dd = time.Now().Date()
+			indexPatten = fmt.Sprintf("-%d.%d.%d", yy, mm, dd)
 		case errBuf := <-indexor.ErrorChannel:
 			log.Println(errBuf.Err)
 		case r := <-m.msgChannel:
