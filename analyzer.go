@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/bitly/go-nsq"
 	"github.com/garyburd/redigo/redis"
@@ -71,12 +72,18 @@ func (m *Analyzer) Stop() {
 
 // HandleMessage is nsq reader's handle
 func (m *Analyzer) HandleMessage(msg *nsq.Message) error {
-	p := rfc3164.NewParser(msg.Body)
-	if err := p.Parse(); err != nil {
+	body := make(map[string]string)
+	err := json.Unmarshal(msg.Body, &body)
+	if err != nil {
+		return nil
+	}
+	p := rfc3164.NewParser([]byte(body["rawmsg"]))
+	if err = p.Parse(); err != nil {
 		log.Println(err, string(msg.Body))
 		return nil
 	}
 	message := p.Dump()
+	message["from"] = body["from"]
 	words := m.parseLog(message["content"].(string))
 	tag := message["tag"].(string)
 	if len(tag) == 0 {
