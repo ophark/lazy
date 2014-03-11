@@ -2,11 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/bitly/go-nsq"
 	"github.com/garyburd/redigo/redis"
+	"github.com/jbrukh/bayesian"
 	"github.com/mattbaird/elastigo/api"
 	"github.com/mattbaird/elastigo/core"
 	"log"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -14,22 +18,31 @@ import (
 type LogParser struct {
 	sync.Mutex
 	*redis.Pool
-	maxInFlight           int
-	lookupdList           []string
-	elasticSearchServer   string
-	elasticSearchPort     string
-	elasticSearchIndex    string
-	elasticSearchIndexTTL string
-	reader                *nsq.Reader
-	logFormat             *LogFormat
-	logTopic              string
-	logChannel            string
-	exitChannel           chan int
-	msgChannel            chan Record
+	*Setting
+	classifiers     []string
+	logTopic        string
+	logChannel      string
+	reader          *nsq.Reader
+	writer          *nsq.Writer
+	logSetting      *LogSetting
+	c               *bayesian.Classifier
+	wordSplitRegexp *regexp.Regexp
+	regexMap        map[string][]*regexp.Regexp
+	exitChannel     chan int
+	msgChannel      chan Record
 }
 
 func (m *LogParser) Run() error {
+	redisCon := func() (redis.Conn, error) {
+		c, err := redis.Dial("tcp", m.redisServer)
+		if err != nil {
+			return nil, err
+		}
+		return c, err
+	}
+	m.Pool = redis.NewPool(redisCon, 3)
 	m.getLogFormat()
+	m.wordSplitRegexp = regexp.MustCompile(m.logSetting.splitRegexp)
 	go m.elasticSearchBuildIndex()
 	var err error
 	m.reader, err = nsq.NewReader(m.logTopic, m.logChannel)
@@ -41,7 +54,7 @@ func (m *LogParser) Run() error {
 	for i := 0; i < m.maxInFlight; i++ {
 		m.reader.AddHandler(m)
 	}
-	for _, addr := range m.lookupdList {
+	for _, addr := range m.lookupdAddresses {
 		err := m.reader.ConnectToLookupd(addr)
 		if err != nil {
 			return err
@@ -53,24 +66,67 @@ func (m *LogParser) Run() error {
 
 func (m *LogParser) Stop() {
 	m.reader.Stop()
+	m.writer.Stop()
 	close(m.exitChannel)
+	m.Pool.Close()
 }
 
 func (m *LogParser) HandleMessage(msg *nsq.Message) error {
-	m.Lock()
-	defer m.Unlock()
-	rst := generateLogTokens(msg.Body)
-	message, err := m.logFormat.Parser(rst)
+	body := make(map[string]string)
+	err := json.Unmarshal(msg.Body, &body)
 	if err != nil {
-		log.Println(err)
 		return nil
 	}
 	record := Record{
 		errChannel: make(chan error),
-		body:       message,
-		ttl:        m.elasticSearchIndexTTL,
-		logType:    m.logTopic,
+		ttl:        m.logSetting.indexTTL,
 	}
+	m.Lock()
+	message, err := m.logSetting.Parser([]byte(body["rawmsg"]))
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+	message["from"] = body["from"]
+	if m.logSetting.logType == "rfc3164" {
+		tag := message["tag"].(string)
+		if len(tag) == 0 {
+			message["tag"] = "misc"
+			tag = "misc"
+		} else {
+			tag = strings.Replace(tag, ".", "", -1)
+		}
+		for _, check := range m.logSetting.addtionCheck {
+			switch check {
+			case "regex":
+				rg, ok := m.regexMap[tag]
+				if ok {
+					for _, r := range rg {
+						if r.MatchString(message["content"].(string)) {
+							if record.logType == "chaos" {
+								record.logType = "regexp"
+							} else {
+								record.logType += "_regexp"
+							}
+							break
+						}
+					}
+				}
+			case "bayes":
+				words := m.parseWords(message["content"].(string))
+				_, likely, strict := m.c.LogScores(words)
+				if strict {
+					record.logType = m.classifiers[likely]
+				} else {
+					m.writer.Publish(m.trainTopic, msg.Body)
+				}
+			default:
+				log.Println("unsupportted check way", check)
+			}
+		}
+	}
+	m.Unlock()
+	record.body = message
 	m.msgChannel <- record
 	return <-record.errChannel
 }
@@ -78,17 +134,71 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 func (m *LogParser) getLogFormat() {
 	con := m.Get()
 	defer con.Close()
-	body, e := con.Do("GET", "logformat:"+m.logTopic)
+	body, e := con.Do("GET", "logsetting:"+m.logTopic)
 	if e != nil {
 		return
 	}
 	m.Lock()
 	defer m.Unlock()
-	var logFormat LogFormat
-	if err := json.Unmarshal(body.([]byte), &logFormat); err == nil {
-		m.logFormat = &logFormat
+	var logSetting LogSetting
+	if err := json.Unmarshal(body.([]byte), &logSetting); err == nil {
+		m.logSetting = &logSetting
 	}
 
+}
+
+func (m *LogParser) getBayes() {
+	con := m.Get()
+	defer con.Close()
+	classifiers, err := redis.Strings(con.Do("SMEMBERS", "classifiers:"+m.logTopic))
+	if err != nil {
+		log.Println("fail to get classifiers", classifiers)
+		return
+	}
+	if len(classifiers) < 2 {
+		log.Println("classifiers is less than 2")
+		return
+	}
+	var classifierList []bayesian.Class
+	for _, c := range classifiers {
+		classifierList = append(classifierList, bayesian.Class(c))
+	}
+	m.Lock()
+	defer m.Unlock()
+	m.classifiers = classifiers
+	m.c = bayesian.NewClassifier(classifierList...)
+	for _, c := range classifierList {
+		words, err := redis.Strings(con.Do("SMEMBERS", "classifier:"+m.logTopic+":"+string(c)))
+		if err != nil {
+			log.Println("fail to get words", c)
+			return
+		}
+		m.c.Learn(words, c)
+	}
+}
+
+func (m *LogParser) getRegexp() {
+	con := m.Get()
+	defer con.Close()
+	t, e := redis.Strings(con.Do("SMEMBERS", "logtags"+m.logTopic))
+	if e != nil {
+		return
+	}
+	for _, value := range t {
+		r, _ := redis.Strings(con.Do("SMEMBERS", "logtag:"+m.logTopic+":"+value))
+		var rg []*regexp.Regexp
+		for _, v := range r {
+			x, e := regexp.CompilePOSIX(v)
+			if e != nil {
+				log.Println(r, e)
+				continue
+			}
+			rg = append(rg, x)
+		}
+		m.Lock()
+		m.regexMap[value] = rg
+		m.Unlock()
+	}
 }
 
 func (m *LogParser) syncLogFormat() {
@@ -97,6 +207,16 @@ func (m *LogParser) syncLogFormat() {
 		select {
 		case <-ticker:
 			m.getLogFormat()
+			for _, check := range m.logSetting.addtionCheck {
+				switch check {
+				case "regex":
+					m.getRegexp()
+				case "bayes":
+					m.getBayes()
+				default:
+					log.Println("unsupportted check way", check)
+				}
+			}
 		case <-m.exitChannel:
 			return
 		}
@@ -104,22 +224,40 @@ func (m *LogParser) syncLogFormat() {
 }
 
 func (m *LogParser) elasticSearchBuildIndex() {
-	api.Domain = m.elasticSearchServer
+	api.Domain = m.elasticSearchHost
 	api.Port = m.elasticSearchPort
 	indexor := core.NewBulkIndexorErrors(10, 60)
 	done := make(chan bool)
 	indexor.Run(done)
 	var err error
+	ticker := time.Tick(time.Second * 600)
+	yy, mm, dd := time.Now().Date()
+	indexPatten := fmt.Sprintf("-%d.%d.%d", yy, mm, dd)
 	for {
 		select {
+		case <-ticker:
+			yy, mm, dd = time.Now().Date()
+			indexPatten = fmt.Sprintf("-%d.%d.%d", yy, mm, dd)
 		case errBuf := <-indexor.ErrorChannel:
 			log.Println(errBuf.Err)
 		case r := <-m.msgChannel:
-			err = indexor.Index(m.elasticSearchIndex, r.logType, "", r.ttl, nil, r.body)
+			m.Lock()
+			searchIndex := m.logSetting.elasticSearchIndex
+			m.Unlock()
+			err = indexor.Index(searchIndex+indexPatten, r.logType, "", r.ttl, nil, r.body)
 			r.errChannel <- err
 		case <-m.exitChannel:
 			break
 		}
 	}
 	done <- true
+}
+
+func (m *LogParser) parseWords(msg string) []string {
+	t := strings.Split(m.wordSplitRegexp.ReplaceAllString(msg, " "), " ")
+	var tokens []string
+	for _, v := range t {
+		tokens = append(tokens, strings.ToLower(v))
+	}
+	return tokens
 }

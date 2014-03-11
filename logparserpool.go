@@ -10,30 +10,35 @@ import (
 type LogParserPool struct {
 	sync.Mutex
 	*redis.Pool
-	maxInFlight           int
-	lookupdList           []string
-	checklist             map[string]string
-	logChannel            string
-	elasticSearchServer   string
-	elasticSearchPort     string
-	elasticSearchIndex    string
-	elasticSearchIndexTTL string
-	exitChannel           chan int
-	logParserList         map[string]*LogParser
+	*Setting
+	checklist     map[string]string
+	exitChannel   chan int
+	logParserList map[string]*LogParser
 }
 
 func (m *LogParserPool) Run() {
+	redisCon := func() (redis.Conn, error) {
+		c, err := redis.Dial("tcp", m.redisServer)
+		if err != nil {
+			return nil, err
+		}
+		return c, err
+	}
+	m.Pool = redis.NewPool(redisCon, 3)
+	m.exitChannel = make(chan int)
+	m.checklist = make(map[string]string)
+	m.logParserList = make(map[string]*LogParser)
 	go m.syncLogTopics()
 }
 
 func (m *LogParserPool) Stop() {
 	close(m.exitChannel)
+	m.Pool.Close()
 	m.Lock()
 	defer m.Unlock()
 	for k := range m.logParserList {
 		m.logParserList[k].Stop()
 	}
-	m.Pool.Close()
 }
 
 func (m *LogParserPool) syncLogTopics() {
@@ -60,22 +65,13 @@ func (m *LogParserPool) getLogTopics() {
 	}
 	m.Lock()
 	defer m.Unlock()
-	m.checklist = make(map[string]string)
 	for _, topic := range topics {
 		m.checklist[topic] = topic
 		if _, ok := m.logParserList[topic]; !ok {
 			w := &LogParser{
-				Pool:                  m.Pool,
-				logTopic:              topic,
-				logChannel:            m.logChannel,
-				elasticSearchServer:   m.elasticSearchServer,
-				elasticSearchPort:     m.elasticSearchPort,
-				elasticSearchIndex:    m.elasticSearchIndex,
-				elasticSearchIndexTTL: m.elasticSearchIndexTTL,
-				maxInFlight:           m.maxInFlight,
-				lookupdList:           m.lookupdList,
-				exitChannel:           make(chan int),
-				msgChannel:            make(chan Record),
+				Setting:     m.Setting,
+				exitChannel: make(chan int),
+				msgChannel:  make(chan Record),
 			}
 			if err := w.Run(); err != nil {
 				log.Println(topic, err)
