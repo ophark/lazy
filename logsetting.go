@@ -11,12 +11,12 @@ import (
 
 type LogSetting struct {
 	logType            string            `json:"log_type"`
-	splitRegexp        string            `json:"split_regexp"`
+	splitRegexp        string            `json:"split_regexp,omitempty"`
 	elasticSearchIndex string            `json:"index"`
 	indexTTL           string            `json:"index_ttl"`
-	tokens             []string          `json:"tokens"`
-	tokenFormat        map[string]string `json:"token_format"`
-	addtionCheck       []string          `json:"addtion_check"`
+	tokens             []string          `json:"tokens,omitempty"`
+	tokenFormat        map[string]string `json:"token_format,omitempty"`
+	addtionCheck       []string          `json:"addtion_check,omitempty"`
 }
 
 func (l *LogSetting) Parser(msg []byte) (map[string]interface{}, error) {

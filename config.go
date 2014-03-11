@@ -11,8 +11,6 @@ import (
 type Setting struct {
 	nsqdAddress       string   `jpath:"nsqd_addr"`
 	lookupdAddresses  []string `jpath:"lookupd_addresses"`
-	analyzerTopic     string   `jpath:"analyzer_topic"`
-	analyzerChannel   string   `jpath:"analyzer_channel"`
 	trainTopic        string   `jpath:"train_topic"`
 	redisServer       string   `jpath:"redis_server"`
 	elasticSearchHost string   `jpath:"elasticsearch_host"`

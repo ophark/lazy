@@ -43,6 +43,7 @@ func (m *LogParser) Run() error {
 	m.Pool = redis.NewPool(redisCon, 3)
 	m.getLogFormat()
 	m.wordSplitRegexp = regexp.MustCompile(m.logSetting.splitRegexp)
+	m.logChannel = "logtoelasticsearch"
 	go m.elasticSearchBuildIndex()
 	var err error
 	m.reader, err = nsq.NewReader(m.logTopic, m.logChannel)

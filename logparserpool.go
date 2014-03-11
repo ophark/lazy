@@ -25,9 +25,6 @@ func (m *LogParserPool) Run() {
 		return c, err
 	}
 	m.Pool = redis.NewPool(redisCon, 3)
-	m.exitChannel = make(chan int)
-	m.checklist = make(map[string]string)
-	m.logParserList = make(map[string]*LogParser)
 	go m.syncLogTopics()
 }
 
@@ -70,6 +67,7 @@ func (m *LogParserPool) getLogTopics() {
 		if _, ok := m.logParserList[topic]; !ok {
 			w := &LogParser{
 				Setting:     m.Setting,
+				logTopic:    topic,
 				exitChannel: make(chan int),
 				msgChannel:  make(chan Record),
 			}
