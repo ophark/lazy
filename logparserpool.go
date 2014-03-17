@@ -18,7 +18,7 @@ type LogParserPool struct {
 
 func (m *LogParserPool) Run() {
 	redisCon := func() (redis.Conn, error) {
-		c, err := redis.Dial("tcp", m.redisServer)
+		c, err := redis.Dial("tcp", m.RedisServer)
 		if err != nil {
 			return nil, err
 		}
@@ -69,7 +69,7 @@ func (m *LogParserPool) getLogTopics() {
 				Setting:     m.Setting,
 				logTopic:    topic,
 				exitChannel: make(chan int),
-				msgChannel:  make(chan Record),
+				msgChannel:  make(chan ElasticRecord),
 			}
 			if err := w.Run(); err != nil {
 				log.Println(topic, err)

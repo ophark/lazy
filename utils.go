@@ -1,8 +1,7 @@
 package main
 
 // Record is used to pass data to elasticsearch
-type Record struct {
-	logType    string
+type ElasticRecord struct {
 	ttl        string
 	body       map[string]interface{}
 	errChannel chan error

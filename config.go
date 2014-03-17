@@ -9,16 +9,16 @@ import (
 
 // Config is metrictools config struct
 type Setting struct {
-	nsqdAddress       string   `jpath:"nsqd_addr"`
-	lookupdAddresses  []string `jpath:"lookupd_addresses"`
-	trainTopic        string   `jpath:"train_topic"`
-	redisServer       string   `jpath:"redis_server"`
-	elasticSearchHost string   `jpath:"elasticsearch_host"`
-	elasticSearchPort string   `jpath:"elasticsearch_port"`
-	maxInFlight       int      `jpath:"maxinflight"`
-	listenAddress     string   `jpath:"listen_address"`
-	sessionName       string   `jpath:"session_name"`
-	modes             []string `jpath:"modes"`
+	NsqdAddress       string   `jpath:"nsqd_addr"`
+	LookupdAddresses  []string `jpath:"lookupd_addresses"`
+	TrainTopic        string   `jpath:"train_topic"`
+	RedisServer       string   `jpath:"redis_server"`
+	ElasticSearchHost string   `jpath:"elasticsearch_host"`
+	ElasticSearchPort string   `jpath:"elasticsearch_port"`
+	MaxInFlight       int      `jpath:"maxinflight"`
+	ListenAddress     string   `jpath:"listen_address"`
+	SessionName       string   `jpath:"session_name"`
+	Modes             []string `jpath:"modes"`
 }
 
 // ReadConfig used to read json to config

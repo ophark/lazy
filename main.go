@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"github.com/datastream/sessions"
+	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
@@ -15,7 +16,7 @@ var (
 	confFile = flag.String("conf", "lazy.json", "lazy config file")
 )
 
-var queryservice *RedisQueryTask
+var pool *redis.Pool
 
 var sessionservice *sessions.RedisStore
 
@@ -30,14 +31,7 @@ func main() {
 		log.Fatal("config parse error", err)
 	}
 	var tasks []Task
-	queryservice = &RedisQueryTask{
-		RedisServer:  c.redisServer,
-		exitChannel:  make(chan int),
-		queryChannel: make(chan *RedisQuery),
-	}
-	queryservice.Run()
-	tasks = append(tasks, queryservice)
-	for _, v := range c.modes {
+	for _, v := range c.Modes {
 		switch v {
 		case "logparser":
 			logParserPool := &LogParserPool{
@@ -72,7 +66,7 @@ func main() {
 				s.HandleFunc("/logtopic/{name}/t/{regexp}/{rule}", RegexpRuleDelete).Methods("DELETE")
 			*/
 			http.Handle("/", r)
-			go http.ListenAndServe(c.listenAddress, nil)
+			go http.ListenAndServe(c.ListenAddress, nil)
 
 		}
 	}

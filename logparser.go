@@ -29,12 +29,12 @@ type LogParser struct {
 	wordSplitRegexp *regexp.Regexp
 	regexMap        map[string][]*regexp.Regexp
 	exitChannel     chan int
-	msgChannel      chan Record
+	msgChannel      chan ElasticRecord
 }
 
 func (m *LogParser) Run() error {
 	redisCon := func() (redis.Conn, error) {
-		c, err := redis.Dial("tcp", m.redisServer)
+		c, err := redis.Dial("tcp", m.RedisServer)
 		if err != nil {
 			return nil, err
 		}
@@ -42,7 +42,7 @@ func (m *LogParser) Run() error {
 	}
 	m.Pool = redis.NewPool(redisCon, 3)
 	m.getLogFormat()
-	m.wordSplitRegexp = regexp.MustCompile(m.logSetting.splitRegexp)
+	m.wordSplitRegexp = regexp.MustCompile(m.logSetting.SplitRegexp)
 	m.logChannel = "logtoelasticsearch"
 	go m.elasticSearchBuildIndex()
 	var err error
@@ -51,11 +51,11 @@ func (m *LogParser) Run() error {
 		log.Println(m.logTopic, err)
 		return err
 	}
-	m.reader.SetMaxInFlight(m.maxInFlight)
-	for i := 0; i < m.maxInFlight; i++ {
+	m.reader.SetMaxInFlight(m.MaxInFlight)
+	for i := 0; i < m.MaxInFlight; i++ {
 		m.reader.AddHandler(m)
 	}
-	for _, addr := range m.lookupdAddresses {
+	for _, addr := range m.LookupdAddresses {
 		err := m.reader.ConnectToLookupd(addr)
 		if err != nil {
 			return err
@@ -78,9 +78,9 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 	if err != nil {
 		return nil
 	}
-	record := Record{
+	record := ElasticRecord{
 		errChannel: make(chan error),
-		ttl:        m.logSetting.indexTTL,
+		ttl:        m.logSetting.IndexTTL,
 	}
 	m.Lock()
 	message, err := m.logSetting.Parser([]byte(body["rawmsg"]))
@@ -89,7 +89,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 		return nil
 	}
 	message["from"] = body["from"]
-	if m.logSetting.logType == "rfc3164" {
+	if m.logSetting.LogType == "rfc3164" {
 		tag := message["tag"].(string)
 		if len(tag) == 0 {
 			message["tag"] = "misc"
@@ -97,29 +97,26 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 		} else {
 			tag = strings.Replace(tag, ".", "", -1)
 		}
-		for _, check := range m.logSetting.addtionCheck {
+		for _, check := range m.logSetting.AddtionCheck {
 			switch check {
-			case "regex":
+			case "regexp":
 				rg, ok := m.regexMap[tag]
 				if ok {
+					record.body["regexp_check"] = "failed"
 					for _, r := range rg {
 						if r.MatchString(message["content"].(string)) {
-							if record.logType == "chaos" {
-								record.logType = "regexp"
-							} else {
-								record.logType += "_regexp"
-							}
-							break
+							record.body["regexp_check"] = "passed"
 						}
 					}
 				}
 			case "bayes":
 				words := m.parseWords(message["content"].(string))
 				_, likely, strict := m.c.LogScores(words)
+				record.body["bayes_check"] = "chaos"
 				if strict {
-					record.logType = m.classifiers[likely]
+					record.body["bayes_check"] = m.classifiers[likely]
 				} else {
-					m.writer.Publish(m.trainTopic, msg.Body)
+					m.writer.Publish(m.TrainTopic, msg.Body)
 				}
 			default:
 				log.Println("unsupportted check way", check)
@@ -208,9 +205,9 @@ func (m *LogParser) syncLogFormat() {
 		select {
 		case <-ticker:
 			m.getLogFormat()
-			for _, check := range m.logSetting.addtionCheck {
+			for _, check := range m.logSetting.AddtionCheck {
 				switch check {
-				case "regex":
+				case "regexp":
 					m.getRegexp()
 				case "bayes":
 					m.getBayes()
@@ -225,8 +222,8 @@ func (m *LogParser) syncLogFormat() {
 }
 
 func (m *LogParser) elasticSearchBuildIndex() {
-	api.Domain = m.elasticSearchHost
-	api.Port = m.elasticSearchPort
+	api.Domain = m.ElasticSearchHost
+	api.Port = m.ElasticSearchPort
 	indexor := core.NewBulkIndexorErrors(10, 60)
 	done := make(chan bool)
 	indexor.Run(done)
@@ -243,9 +240,9 @@ func (m *LogParser) elasticSearchBuildIndex() {
 			log.Println(errBuf.Err)
 		case r := <-m.msgChannel:
 			m.Lock()
-			searchIndex := m.logSetting.elasticSearchIndex
+			searchIndex := m.logSetting.ElasticSearchIndex
 			m.Unlock()
-			err = indexor.Index(searchIndex+indexPatten, r.logType, "", r.ttl, nil, r.body)
+			err = indexor.Index(searchIndex+indexPatten, m.logTopic, "", r.ttl, nil, r.body)
 			r.errChannel <- err
 		case <-m.exitChannel:
 			break

@@ -13,14 +13,9 @@ func LogTopicIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=\"utf-8\"")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET")
-	q := &RedisQuery{
-		Action:        "SMEMBERS",
-		Options:       []interface{}{"logtopics"},
-		resultChannel: make(chan *QueryResult),
-	}
-	queryservice.queryChannel <- q
-	queryresult := <-q.resultChannel
-	topics, err := redis.Strings(queryresult.Value, queryresult.Err)
+	con := pool.Get()
+	topics, err := redis.Strings(con.Do("SMEMBERS", "logtopics"))
+	con.Close()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -43,25 +38,13 @@ func LogTopicCreate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=\"utf-8\"")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST")
-	q := &RedisQuery{
-		Action:        "SADD",
-		Options:       []interface{}{"logtopics", items["topic"]},
-		resultChannel: make(chan *QueryResult),
-	}
-	queryservice.queryChannel <- q
-	queryresult := <-q.resultChannel
-	if queryresult.Err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	q = &RedisQuery{
-		Action:        "SET",
-		Options:       []interface{}{"logsetting:" + items["topic"], items["logsetting"]},
-		resultChannel: make(chan *QueryResult),
-	}
-	queryservice.queryChannel <- q
-	queryresult = <-q.resultChannel
-	if queryresult.Err != nil {
+	con := pool.Get()
+	con.Send("SADD", "logtopics", items["topic"])
+	con.Send("SET", "logsetting:"+items["topic"], items["logsetting"])
+	con.Receive()
+	_, err := con.Receive()
+	con.Close()
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
@@ -72,56 +55,17 @@ func LogTopicDelete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "DELETE")
 	name := mux.Vars(r)["name"]
-	q := &RedisQuery{
-		Action:        "SREM",
-		Options:       []interface{}{"logtopics", name},
-		resultChannel: make(chan *QueryResult),
-	}
-	queryservice.queryChannel <- q
-	queryresult := <-q.resultChannel
-	if queryresult.Err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-	q = &RedisQuery{
-		Action:        "DEL",
-		Options:       []interface{}{"logsetting:" + name},
-		resultChannel: make(chan *QueryResult),
-	}
-	queryservice.queryChannel <- q
-	queryresult = <-q.resultChannel
-	if queryresult.Err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	q = &RedisQuery{
-		Action:        "SMEMBERS",
-		Options:       []interface{}{"classifiers:" + name},
-		resultChannel: make(chan *QueryResult),
-	}
-	queryservice.queryChannel <- q
-	queryresult = <-q.resultChannel
-	list, _ := redis.Strings(queryresult.Value, queryresult.Err)
-	for _, v := range list {
-		q = &RedisQuery{
-			Action:        "DEL",
-			Options:       []interface{}{"classifier:" + name + ":" + v},
-			resultChannel: make(chan *QueryResult),
-		}
-		queryservice.queryChannel <- q
-		queryresult = <-q.resultChannel
-		if queryresult.Err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-	}
-	q = &RedisQuery{
-		Action:        "DEL",
-		Options:       []interface{}{"classifiers:" + name},
-		resultChannel: make(chan *QueryResult),
-	}
-	queryservice.queryChannel <- q
-	queryresult = <-q.resultChannel
-	if queryresult.Err != nil {
+	con := pool.Get()
+	con.Send("SREM", "logtopics", name)
+	con.Send("DEL", "logsetting:"+name)
+	con.Send("DEL", "classifier:"+name)
+	con.Send("DEL", "regexp:"+name)
+	_, err := con.Receive()
+	_, err = con.Receive()
+	_, err = con.Receive()
+	_, err = con.Receive()
+	con.Close()
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

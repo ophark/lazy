@@ -10,19 +10,19 @@ import (
 // LogSetting define log format setting
 
 type LogSetting struct {
-	logType            string            `json:"log_type"`
-	splitRegexp        string            `json:"split_regexp,omitempty"`
-	elasticSearchIndex string            `json:"index"`
-	indexTTL           string            `json:"index_ttl"`
-	tokens             []string          `json:"tokens,omitempty"`
-	tokenFormat        map[string]string `json:"token_format,omitempty"`
-	addtionCheck       []string          `json:"addtion_check,omitempty"`
+	LogType            string            `json:"log_type"`
+	SplitRegexp        string            `json:"split_regexp,omitempty"`
+	ElasticSearchIndex string            `json:"index"`
+	IndexTTL           string            `json:"index_ttl"`
+	Tokens             []string          `json:"tokens,omitempty"`
+	TokenFormat        map[string]string `json:"token_format,omitempty"`
+	AddtionCheck       []string          `json:"addtion_check,omitempty"`
 }
 
 func (l *LogSetting) Parser(msg []byte) (map[string]interface{}, error) {
 	data := make(map[string]interface{})
 	var err error
-	if l.logType == "rfc3164" {
+	if l.LogType == "rfc3164" {
 		p := rfc3164.NewParser(msg)
 		if err = p.Parse(); err != nil {
 			return data, err
@@ -36,12 +36,12 @@ func (l *LogSetting) Parser(msg []byte) (map[string]interface{}, error) {
 
 func (l *LogSetting) wildFormat(msgTokens []string) (map[string]interface{}, error) {
 	data := make(map[string]interface{})
-	if len(l.tokens) != len(msgTokens) {
-		return data, fmt.Errorf("log format error: %s %s", l.tokens, msgTokens)
+	if len(l.Tokens) != len(msgTokens) {
+		return data, fmt.Errorf("log format error: %s %s", l.Tokens, msgTokens)
 	}
-	for i, token := range l.tokens {
+	for i, token := range l.Tokens {
 		tk := msgTokens[i]
-		if format, ok := l.tokenFormat[token]; ok {
+		if format, ok := l.TokenFormat[token]; ok {
 			switch format {
 			case "int":
 				t, err := strconv.ParseInt(tk, 10, 32)
