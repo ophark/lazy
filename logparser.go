@@ -148,7 +148,7 @@ func (m *LogParser) getLogFormat() {
 func (m *LogParser) getBayes() {
 	con := m.Get()
 	defer con.Close()
-	classifiers, err := redis.Strings(con.Do("SMEMBERS", "classifiers:"+m.logTopic))
+	classifiers, err := redis.Strings(con.Do("SMEMBERS", "classifiers"))
 	if err != nil {
 		log.Println("fail to get classifiers", classifiers)
 		return
@@ -166,7 +166,7 @@ func (m *LogParser) getBayes() {
 	m.classifiers = classifiers
 	m.c = bayesian.NewClassifier(classifierList...)
 	for _, c := range classifierList {
-		words, err := redis.Strings(con.Do("SMEMBERS", "classifier:"+m.logTopic+":"+string(c)))
+		words, err := redis.Strings(con.Do("SMEMBERS", "classifier:"+string(c)))
 		if err != nil {
 			log.Println("fail to get words", c)
 			return
@@ -178,12 +178,12 @@ func (m *LogParser) getBayes() {
 func (m *LogParser) getRegexp() {
 	con := m.Get()
 	defer con.Close()
-	t, e := redis.Strings(con.Do("SMEMBERS", "logtags"+m.logTopic))
+	t, e := redis.Strings(con.Do("SMEMBERS", "logtags"))
 	if e != nil {
 		return
 	}
 	for _, value := range t {
-		r, _ := redis.Strings(con.Do("SMEMBERS", "logtag:"+m.logTopic+":"+value))
+		r, _ := redis.Strings(con.Do("SMEMBERS", "tag:"+value))
 		var rg []*regexp.Regexp
 		for _, v := range r {
 			x, e := regexp.CompilePOSIX(v)
