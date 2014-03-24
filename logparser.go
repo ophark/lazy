@@ -24,6 +24,7 @@ type LogParser struct {
 	sync.Mutex
 	*redis.Pool
 	*Setting
+	logTopic        string
 	classifiers     []string
 	logChannel      string
 	reader          *nsq.Reader
@@ -137,9 +138,9 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 }
 
 func (m *LogParser) getLogFormat() {
-	con := m.Get()
+	con := m.Pool.Get()
 	defer con.Close()
-	body, e := con.Do("GET", "logsetting:"+m.logSetting.LogSource)
+	body, e := con.Do("GET", "logsetting:"+m.logTopic)
 	if e != nil {
 		return
 	}
