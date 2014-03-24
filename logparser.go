@@ -123,7 +123,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 				_, likely, strict := m.c.LogScores(words)
 				message["bayes_check"] = "chaos"
 				if strict {
-					record.body["bayes_check"] = m.classifiers[likely]
+					message["bayes_check"] = m.classifiers[likely]
 				} else {
 					m.writer.Publish(m.TrainTopic, msg.Body)
 				}
@@ -133,7 +133,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 		}
 	}
 	m.Unlock()
-	if m.logSetting.LogType == "rfc3164" && record.body["ttl"] == "0" {
+	if m.logSetting.LogType == "rfc3164" && message["ttl"] == "0" {
 		return nil
 	}
 	record.body = message
