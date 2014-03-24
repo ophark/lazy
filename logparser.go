@@ -108,10 +108,10 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 			case "regexp":
 				rg, ok := m.regexMap[tag]
 				if ok {
-					record.body["ttl"] = "-1"
+					message["ttl"] = "-1"
 					for _, r := range rg {
 						if r.Exp.MatchString(message["content"].(string)) {
-							record.body["ttl"] = r.State
+							message["ttl"] = r.State
 						}
 					}
 				}
@@ -121,7 +121,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 					continue
 				}
 				_, likely, strict := m.c.LogScores(words)
-				record.body["bayes_check"] = "chaos"
+				message["bayes_check"] = "chaos"
 				if strict {
 					record.body["bayes_check"] = m.classifiers[likely]
 				} else {
