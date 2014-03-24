@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"github.com/datastream/sessions"
-	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
@@ -16,13 +15,7 @@ var (
 	confFile = flag.String("conf", "lazy.json", "lazy config file")
 )
 
-var pool *redis.Pool
-
 var sessionservice *sessions.RedisStore
-
-type Task interface {
-	Stop()
-}
 
 func main() {
 	flag.Parse()
@@ -30,41 +23,42 @@ func main() {
 	if err != nil {
 		log.Fatal("config parse error", err)
 	}
-	var tasks []Task
+	var logParserPool *LogParserPool
 	for _, v := range c.Modes {
 		switch v {
 		case "logparser":
-			logParserPool := &LogParserPool{
+			logParserPool = &LogParserPool{
 				Setting:       c,
 				exitChannel:   make(chan int),
 				checklist:     make(map[string]string),
 				logParserList: make(map[string]*LogParser),
 			}
 			logParserPool.Run()
-			tasks = append(tasks, logParserPool)
 		case "webui":
+			webapi := &WebAPI{
+				Setting: c,
+			}
+			webapi.Run()
 			r := mux.NewRouter()
 			s := r.PathPrefix("/api/v1").Subrouter()
 
-			s.HandleFunc("/logtopic", LogTopicIndex).Methods("GET")
-			s.HandleFunc("/logtopic", LogTopicCreate).Methods("POST").Headers("Content-Type", "application/json")
-			s.HandleFunc("/logtopic/{name}", LogTopicShow).Methods("GET")
-			s.HandleFunc("/logtopic/{name}", LogTopicDelete).Methods("DELETE")
-			/*
-				s.HandleFunc("/logtopic/{name}/c", ClassifierIndex).Methods("GET")
-				s.HandleFunc("/logtopic/{name}/c", ClassifierCreate).Methods("POST").Headers("Content-Type", "application/json")
-				s.HandleFunc("/logtopic/{name}/c/{classifier}", ClassifierShow).Methods("GET")
-				s.HandleFunc("/logtopic/{name}/c/{classifier}", ClassifierWordCreate).Methods("POST")
-				s.HandleFunc("/logtopic/{name}/c/{classifier}", ClassifierDelete).Methods("DELETE")
-				s.HandleFunc("/logtopic/{name}/c/{classifier}/{word}", ClassifierWordDelete).Methods("DELETE")
+			s.HandleFunc("/logtopic", webapi.LogTopicIndex).Methods("GET")
+			s.HandleFunc("/logtopic", webapi.LogTopicCreate).Methods("POST").Headers("Content-Type", "application/json")
+			s.HandleFunc("/logtopic/{name}", webapi.LogTopicShow).Methods("GET")
+			s.HandleFunc("/logtopic/{name}", webapi.LogTopicDelete).Methods("DELETE")
+			s.HandleFunc("/c", webapi.ClassifierIndex).Methods("GET")
+			s.HandleFunc("/c", webapi.ClassifierCreate).Methods("POST").Headers("Content-Type", "application/json")
+			s.HandleFunc("/c/{name}", webapi.ClassifierShow).Methods("GET")
+			s.HandleFunc("/c/{name}/word", webapi.ClassifierWordCreate).Methods("POST")
+			s.HandleFunc("/c/{name}", webapi.ClassifierDelete).Methods("DELETE")
+			s.HandleFunc("/c/{name}/word/{word}", webapi.ClassifierWordDelete).Methods("DELETE")
 
-				s.HandleFunc("/logtopic/{name}/r", RegexpIndex).Methods("GET")
-				s.HandleFunc("/logtopic/{name}/r", RegexpCreate).Methods("POST").Headers("Content-Type", "application/json")
-				s.HandleFunc("/logtopic/{name}/r/{regexp}", RegexpShow).Methods("GET")
-				s.HandleFunc("/logtopic/{name}/r/{regexp}", RegexpRuleCreate).Methods("POST")
-				s.HandleFunc("/logtopic/{name}/r/{regexp}", RegexpDelete).Methods("DELETE")
-				s.HandleFunc("/logtopic/{name}/t/{regexp}/{rule}", RegexpRuleDelete).Methods("DELETE")
-			*/
+			s.HandleFunc("/r", webapi.RegexpIndex).Methods("GET")
+			s.HandleFunc("/r", webapi.RegexpCreate).Methods("POST").Headers("Content-Type", "application/json")
+			s.HandleFunc("/r/{name}", webapi.RegexpShow).Methods("GET")
+			s.HandleFunc("/r/{name}/rule", webapi.RegexpRuleCreate).Methods("POST")
+			s.HandleFunc("/r/{name}", webapi.RegexpDelete).Methods("DELETE")
+			s.HandleFunc("/r/{name}/rule/{regexp}", webapi.RegexpRuleDelete).Methods("DELETE")
 			http.Handle("/", r)
 			go http.ListenAndServe(c.ListenAddress, nil)
 
@@ -73,7 +67,5 @@ func main() {
 	termchan := make(chan os.Signal, 1)
 	signal.Notify(termchan, syscall.SIGINT, syscall.SIGTERM)
 	<-termchan
-	for _, t := range tasks {
-		t.Stop()
-	}
+	logParserPool.Stop()
 }

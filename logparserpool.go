@@ -67,7 +67,6 @@ func (m *LogParserPool) getLogTopics() {
 		if _, ok := m.logParserList[topic]; !ok {
 			w := &LogParser{
 				Setting:     m.Setting,
-				logTopic:    topic,
 				exitChannel: make(chan int),
 				msgChannel:  make(chan ElasticRecord),
 			}

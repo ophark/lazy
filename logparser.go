@@ -15,19 +15,23 @@ import (
 	"time"
 )
 
+type RegexpSetting struct {
+	Exp   *regexp.Regexp
+	State string
+}
+
 type LogParser struct {
 	sync.Mutex
 	*redis.Pool
 	*Setting
 	classifiers     []string
-	logTopic        string
 	logChannel      string
 	reader          *nsq.Reader
 	writer          *nsq.Writer
 	logSetting      *LogSetting
 	c               *bayesian.Classifier
 	wordSplitRegexp *regexp.Regexp
-	regexMap        map[string][]*regexp.Regexp
+	regexMap        map[string][]*RegexpSetting
 	exitChannel     chan int
 	msgChannel      chan ElasticRecord
 }
@@ -46,9 +50,9 @@ func (m *LogParser) Run() error {
 	m.logChannel = "logtoelasticsearch"
 	go m.elasticSearchBuildIndex()
 	var err error
-	m.reader, err = nsq.NewReader(m.logTopic, m.logChannel)
+	m.reader, err = nsq.NewReader(m.logSetting.LogSource, m.logChannel)
 	if err != nil {
-		log.Println(m.logTopic, err)
+		log.Println(m.logSetting.LogSource, err)
 		return err
 	}
 	m.reader.SetMaxInFlight(m.MaxInFlight)
@@ -104,8 +108,8 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 				if ok {
 					record.body["regexp_check"] = "failed"
 					for _, r := range rg {
-						if r.MatchString(message["content"].(string)) {
-							record.body["regexp_check"] = "passed"
+						if r.Exp.MatchString(message["content"].(string)) {
+							record.body["regexp_check"] = r.State
 						}
 					}
 				}
@@ -124,6 +128,9 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 		}
 	}
 	m.Unlock()
+	if m.logSetting.LogType == "rfc3164" && record.body["regexp_check"] == "delete" {
+		return nil
+	}
 	record.body = message
 	m.msgChannel <- record
 	return <-record.errChannel
@@ -132,7 +139,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 func (m *LogParser) getLogFormat() {
 	con := m.Get()
 	defer con.Close()
-	body, e := con.Do("GET", "logsetting:"+m.logTopic)
+	body, e := con.Do("GET", "logsetting:"+m.logSetting.LogSource)
 	if e != nil {
 		return
 	}
@@ -183,15 +190,23 @@ func (m *LogParser) getRegexp() {
 		return
 	}
 	for _, value := range t {
-		r, _ := redis.Strings(con.Do("SMEMBERS", "tag:"+value))
-		var rg []*regexp.Regexp
+		r, _ := redis.Strings(con.Do("SMEMBERS", "logtag:"+value))
+		var rg []*RegexpSetting
 		for _, v := range r {
-			x, e := regexp.CompilePOSIX(v)
-			if e != nil {
-				log.Println(r, e)
-				continue
+			var status map[string]string
+			reg := &RegexpSetting{}
+			if err := json.Unmarshal([]byte(v), &status); err == nil {
+				if len(status["regexp"]) > 0 && len(status["state"]) > 0 {
+					x, e := regexp.CompilePOSIX(status["regexp"])
+					if e != nil {
+						log.Println(r, e)
+						continue
+					}
+					reg.Exp = x
+					reg.State = status["state"]
+					rg = append(rg, reg)
+				}
 			}
-			rg = append(rg, x)
 		}
 		m.Lock()
 		m.regexMap[value] = rg
@@ -240,9 +255,9 @@ func (m *LogParser) elasticSearchBuildIndex() {
 			log.Println(errBuf.Err)
 		case r := <-m.msgChannel:
 			m.Lock()
-			searchIndex := m.logSetting.ElasticSearchIndex
+			searchIndex := m.logSetting.LogSource
 			m.Unlock()
-			err = indexor.Index(searchIndex+indexPatten, m.logTopic, "", r.ttl, nil, r.body)
+			err = indexor.Index(searchIndex+indexPatten, m.logSetting.LogType, "", r.ttl, nil, r.body)
 			r.errChannel <- err
 		case <-m.exitChannel:
 			break
