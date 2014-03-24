@@ -68,6 +68,7 @@ func (m *LogParserPool) getLogTopics() {
 			w := &LogParser{
 				Setting:     m.Setting,
 				logTopic:    topic,
+				regexMap:    make(map[string][]*RegexpSetting),
 				exitChannel: make(chan int),
 				msgChannel:  make(chan ElasticRecord),
 			}
