@@ -117,6 +117,9 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 				}
 			case "bayes":
 				words := m.parseWords(message["content"].(string))
+				if m.c == nil {
+					continue
+				}
 				_, likely, strict := m.c.LogScores(words)
 				record.body["bayes_check"] = "chaos"
 				if strict {
