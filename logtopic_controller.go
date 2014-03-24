@@ -28,7 +28,7 @@ func (q *WebAPI) LogTopicIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (q *WebAPI) LogTopicCreate(w http.ResponseWriter, r *http.Request) {
-	var items map[string]string
+	var items LogSetting
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&items); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -40,19 +40,22 @@ func (q *WebAPI) LogTopicCreate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "POST")
 	con := q.Pool.Get()
 	defer con.Close()
-	con.Send("SADD", "logtopics", items["topic"])
-	con.Send("SET", "logsetting:"+items["topic"], items["logsetting"])
-	con.Flush()
-	con.Receive()
-	_, err := con.Receive()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+	if len(items.LogSource) > 0 {
+		data, _ := json.Marshal(items)
+		con.Send("SADD", "logtopics", items.LogSource)
+		con.Send("SET", "logsetting:"+items.LogSource, data)
+		con.Flush()
+		con.Receive()
+		_, err := con.Receive()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}
 }
 
 func (q *WebAPI) LogTopicShow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "DELETE")
+	w.Header().Set("Access-Control-Allow-Methods", "GET")
 	name := mux.Vars(r)["name"]
 	con := q.Pool.Get()
 	defer con.Close()
