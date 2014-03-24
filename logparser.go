@@ -51,6 +51,7 @@ func (m *LogParser) Run() error {
 	m.logChannel = "logtoelasticsearch"
 	go m.elasticSearchBuildIndex()
 	var err error
+	m.writer = nsq.NewWriter(m.NsqdAddress)
 	m.reader, err = nsq.NewReader(m.logSetting.LogSource, m.logChannel)
 	if err != nil {
 		log.Println(m.logSetting.LogSource, err)
@@ -88,7 +89,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 		ttl:        m.logSetting.IndexTTL,
 	}
 	m.Lock()
-	message, err := m.logSetting.Parser([]byte(body["rawmsg"]))
+	message, err := m.logSetting.Parser([]byte(body["raw_msg"]))
 	if err != nil {
 		log.Println(err)
 		return nil
