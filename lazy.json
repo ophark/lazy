@@ -1,5 +1,5 @@
 {
-    "lookupd_addresses":"127.0.0.1:4161",
+    "lookupd_addresses":["127.0.0.1:4161"],
     "nsqd_addr":"127.0.0.1:4150",
     "maxinflight":"200",
     "train_topic": "bayes",
