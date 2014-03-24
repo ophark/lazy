@@ -108,10 +108,10 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 			case "regexp":
 				rg, ok := m.regexMap[tag]
 				if ok {
-					record.body["regexp_check"] = "failed"
+					record.body["ttl"] = "-1"
 					for _, r := range rg {
 						if r.Exp.MatchString(message["content"].(string)) {
-							record.body["regexp_check"] = r.State
+							record.body["ttl"] = r.State
 						}
 					}
 				}
@@ -133,7 +133,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 		}
 	}
 	m.Unlock()
-	if m.logSetting.LogType == "rfc3164" && record.body["regexp_check"] == "delete" {
+	if m.logSetting.LogType == "rfc3164" && record.body["ttl"] == "0" {
 		return nil
 	}
 	record.body = message
@@ -201,14 +201,14 @@ func (m *LogParser) getRegexp() {
 			var status map[string]string
 			reg := &RegexpSetting{}
 			if err := json.Unmarshal([]byte(v), &status); err == nil {
-				if len(status["regexp"]) > 0 && len(status["state"]) > 0 {
+				if len(status["regexp"]) > 0 && len(status["ttl"]) > 0 {
 					x, e := regexp.CompilePOSIX(status["regexp"])
 					if e != nil {
 						log.Println(r, e)
 						continue
 					}
 					reg.Exp = x
-					reg.State = status["state"]
+					reg.State = status["ttl"]
 					rg = append(rg, reg)
 				}
 			}

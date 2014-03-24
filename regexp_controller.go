@@ -55,7 +55,7 @@ func (q *WebAPI) RegexpCreate(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			if len(status["regexp"]) > 0 && len(status["state"]) > 0 {
+			if len(status["regexp"]) > 0 && len(status["ttl"]) > 0 {
 				_, err = con.Do("SADD", "logtag:"+c, k)
 				if err != nil {
 					w.WriteHeader(http.StatusInternalServerError)
@@ -111,7 +111,7 @@ func (q *WebAPI) RegexpRuleCreate(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if len(status["regexp"]) > 0 && len(status["state"]) > 0 {
+		if len(status["regexp"]) > 0 && len(status["ttl"]) > 0 {
 			_, err = con.Do("SADD", "logtag:"+c, k)
 		}
 	}
