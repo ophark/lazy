@@ -257,8 +257,8 @@ func (m *LogParser) elasticSearchBuildIndex() {
 		case r := <-m.msgChannel:
 			m.Lock()
 			searchIndex := m.logSetting.LogSource
-			m.Unlock()
 			err = indexor.Index(searchIndex+indexPatten, m.logSetting.LogType, "", r.ttl, nil, r.body)
+			m.Unlock()
 			r.errChannel <- err
 		case <-m.exitChannel:
 			break
