@@ -47,6 +47,8 @@ func (m *LogParser) Run() error {
 	}
 	m.Pool = redis.NewPool(redisCon, 3)
 	m.getLogFormat()
+	m.getRegexp()
+	m.getBayes()
 	m.wordSplitRegexp = regexp.MustCompile(m.logSetting.SplitRegexp)
 	m.logChannel = "logtoelasticsearch"
 	go m.elasticSearchBuildIndex()
@@ -222,19 +224,20 @@ func (m *LogParser) getRegexp() {
 func (m *LogParser) syncLogFormat() {
 	ticker := time.Tick(time.Second * 600)
 	for {
+		m.getLogFormat()
+		for _, check := range m.logSetting.AddtionCheck {
+			switch check {
+			case "regexp":
+				m.getRegexp()
+			case "bayes":
+				m.getBayes()
+			default:
+				log.Println("unsupportted check way", check)
+			}
+		}
 		select {
 		case <-ticker:
-			m.getLogFormat()
-			for _, check := range m.logSetting.AddtionCheck {
-				switch check {
-				case "regexp":
-					m.getRegexp()
-				case "bayes":
-					m.getBayes()
-				default:
-					log.Println("unsupportted check way", check)
-				}
-			}
+			continue
 		case <-m.exitChannel:
 			return
 		}
