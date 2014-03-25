@@ -114,6 +114,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 					for _, r := range rg {
 						if r.Exp.MatchString(message["content"].(string)) {
 							message["ttl"] = r.State
+							record.ttl = r.State
 						}
 					}
 				}
@@ -126,8 +127,6 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 				message["bayes_check"] = "chaos"
 				if strict {
 					message["bayes_check"] = m.classifiers[likely]
-				} else {
-					m.writer.Publish(m.TrainTopic, msg.Body)
 				}
 			default:
 				log.Println("unsupportted check way", check)
@@ -137,6 +136,9 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 	m.Unlock()
 	if m.logSetting.LogType == "rfc3164" && message["ttl"] == "0" {
 		return nil
+	}
+	if message["bayes_check"] == "chaos" {
+		m.writer.Publish(m.TrainTopic, msg.Body)
 	}
 	record.body = message
 	m.msgChannel <- record
