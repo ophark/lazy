@@ -91,6 +91,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 		ttl:        m.logSetting.IndexTTL,
 	}
 	m.Lock()
+	defer m.Unlock()
 	message, err := m.logSetting.Parser([]byte(body["raw_msg"]))
 	if err != nil {
 		log.Println(err)
@@ -133,7 +134,6 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 			}
 		}
 	}
-	m.Unlock()
 	if m.logSetting.LogType == "rfc3164" && message["ttl"] == "0" {
 		return nil
 	}
@@ -256,19 +256,24 @@ func (m *LogParser) elasticSearchBuildIndex() {
 	ticker := time.Tick(time.Second * 600)
 	yy, mm, dd := time.Now().Date()
 	indexPatten := fmt.Sprintf("-%d.%d.%d", yy, mm, dd)
+	m.Lock()
+	searchIndex := m.logSetting.LogSource+indexPatten
+	logtype := m.logSetting.LogType
+	m.Unlock()
 	for {
 		timestamp := time.Now()
 		select {
 		case <-ticker:
 			yy, mm, dd = timestamp.Date()
 			indexPatten = fmt.Sprintf("-%d.%d.%d", yy, mm, dd)
+			m.Lock()
+			searchIndex = m.logSetting.LogSource+indexPatten
+			logtype = m.logSetting.LogType
+			m.Unlock()
 		case errBuf := <-indexor.ErrorChannel:
 			log.Println(errBuf.Err)
 		case r := <-m.msgChannel:
-			m.Lock()
-			searchIndex := m.logSetting.LogSource
-			err = indexor.Index(searchIndex+indexPatten, m.logSetting.LogType, "", r.ttl, &timestamp, r.body)
-			m.Unlock()
+			err = indexor.Index(searchIndex, logtype, "", r.ttl, &timestamp, r.body)
 			r.errChannel <- err
 		case <-m.exitChannel:
 			break
