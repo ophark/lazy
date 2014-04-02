@@ -94,7 +94,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 	defer m.Unlock()
 	message, err := m.logSetting.Parser([]byte(body["raw_msg"]))
 	if err != nil {
-		log.Println(err)
+		log.Println(err, body["raw_msg"])
 		return nil
 	}
 	message["from"] = body["from"]
