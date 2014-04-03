@@ -257,19 +257,17 @@ func (m *LogParser) elasticSearchBuildIndex() {
 	yy, mm, dd := time.Now().Date()
 	indexPatten := fmt.Sprintf("-%d.%d.%d", yy, mm, dd)
 	m.Lock()
-	searchIndex := m.logSetting.LogSource + indexPatten
+	logsource := m.logSetting.LogSource
 	logtype := m.logSetting.LogType
 	m.Unlock()
+	searchIndex := logsource + indexPatten
 	for {
 		timestamp := time.Now()
 		select {
 		case <-ticker:
 			yy, mm, dd = timestamp.Date()
 			indexPatten = fmt.Sprintf("-%d.%d.%d", yy, mm, dd)
-			m.Lock()
-			searchIndex = m.logSetting.LogSource + indexPatten
-			logtype = m.logSetting.LogType
-			m.Unlock()
+			searchIndex = logsource + indexPatten
 		case errBuf := <-indexor.ErrorChannel:
 			log.Println(errBuf.Err)
 		case r := <-m.msgChannel:
