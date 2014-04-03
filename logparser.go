@@ -256,10 +256,8 @@ func (m *LogParser) elasticSearchBuildIndex() {
 	ticker := time.Tick(time.Second * 600)
 	yy, mm, dd := time.Now().Date()
 	indexPatten := fmt.Sprintf("-%d.%d.%d", yy, mm, dd)
-	m.Lock()
 	logsource := m.logSetting.LogSource
 	logtype := m.logSetting.LogType
-	m.Unlock()
 	searchIndex := logsource + indexPatten
 	for {
 		timestamp := time.Now()
