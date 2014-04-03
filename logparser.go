@@ -81,6 +81,8 @@ func (m *LogParser) Stop() {
 }
 
 func (m *LogParser) HandleMessage(msg *nsq.Message) error {
+	m.Lock()
+	defer m.Unlock()
 	body := make(map[string]string)
 	err := json.Unmarshal(msg.Body, &body)
 	if err != nil {
@@ -90,8 +92,6 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 		errChannel: make(chan error),
 		ttl:        m.logSetting.IndexTTL,
 	}
-	m.Lock()
-	defer m.Unlock()
 	message, err := m.logSetting.Parser([]byte(body["raw_msg"]))
 	if err != nil {
 		log.Println(err, body["raw_msg"])
@@ -198,6 +198,8 @@ func (m *LogParser) getRegexp() {
 	if e != nil {
 		return
 	}
+	m.Lock()
+	defer m.Unlock()
 	for _, value := range t {
 		r, _ := redis.Strings(con.Do("SMEMBERS", "logtag:"+value))
 		var rg []*RegexpSetting
@@ -217,9 +219,7 @@ func (m *LogParser) getRegexp() {
 				}
 			}
 		}
-		m.Lock()
 		m.regexMap[value] = rg
-		m.Unlock()
 	}
 }
 
