@@ -257,7 +257,7 @@ func (m *LogParser) elasticSearchBuildIndex() {
 	yy, mm, dd := time.Now().Date()
 	indexPatten := fmt.Sprintf("-%d.%d.%d", yy, mm, dd)
 	m.Lock()
-	searchIndex := m.logSetting.LogSource+indexPatten
+	searchIndex := m.logSetting.LogSource + indexPatten
 	logtype := m.logSetting.LogType
 	m.Unlock()
 	for {
@@ -267,7 +267,7 @@ func (m *LogParser) elasticSearchBuildIndex() {
 			yy, mm, dd = timestamp.Date()
 			indexPatten = fmt.Sprintf("-%d.%d.%d", yy, mm, dd)
 			m.Lock()
-			searchIndex = m.logSetting.LogSource+indexPatten
+			searchIndex = m.logSetting.LogSource + indexPatten
 			logtype = m.logSetting.LogType
 			m.Unlock()
 		case errBuf := <-indexor.ErrorChannel:
@@ -276,6 +276,7 @@ func (m *LogParser) elasticSearchBuildIndex() {
 			err = indexor.Index(searchIndex, logtype, "", r.ttl, &timestamp, r.body)
 			r.errChannel <- err
 		case <-m.exitChannel:
+			log.Println("exit elasticsearch")
 			break
 		}
 	}

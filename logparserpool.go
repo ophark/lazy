@@ -87,6 +87,7 @@ func (m *LogParserPool) checkLogParsers() {
 	for k := range m.logParserList {
 		if _, ok := m.checklist[k]; !ok {
 			m.logParserList[k].Stop()
+			log.Println("remove:", k)
 			delete(m.logParserList, k)
 		}
 	}
