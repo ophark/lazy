@@ -9,6 +9,7 @@ import (
 	"github.com/mattbaird/elastigo/api"
 	"github.com/mattbaird/elastigo/core"
 	"log"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -27,8 +28,8 @@ type LogParser struct {
 	logTopic        string
 	classifiers     []string
 	logChannel      string
-	reader          *nsq.Reader
-	writer          *nsq.Writer
+	consumer        *nsq.Consumer
+	producer        *nsq.Producer
 	logSetting      *LogSetting
 	c               *bayesian.Classifier
 	wordSplitRegexp *regexp.Regexp
@@ -52,30 +53,29 @@ func (m *LogParser) Run() error {
 	m.wordSplitRegexp = regexp.MustCompile(m.logSetting.SplitRegexp)
 	m.logChannel = "logtoelasticsearch"
 	go m.elasticSearchBuildIndex()
-	var err error
-	m.writer = nsq.NewWriter(m.NsqdAddress)
-	m.reader, err = nsq.NewReader(m.logSetting.LogSource, m.logChannel)
+	cfg := nsq.NewConfig()
+	hostname, err := os.Hostname()
+	cfg.Set("user_agent", fmt.Sprintf("lazy/%s", hostname))
+	cfg.Set("snappy", true)
+	cfg.Set("max_in_flight", m.MaxInFlight)
+	m.producer, err = nsq.NewProducer(m.NsqdAddress, cfg)
+	m.consumer, err = nsq.NewConsumer(m.logSetting.LogSource, m.logChannel, cfg)
 	if err != nil {
 		log.Println(m.logSetting.LogSource, err)
 		return err
 	}
-	m.reader.SetMaxInFlight(m.MaxInFlight)
-	for i := 0; i < m.MaxInFlight; i++ {
-		m.reader.AddHandler(m)
-	}
-	for _, addr := range m.LookupdAddresses {
-		err := m.reader.ConnectToLookupd(addr)
-		if err != nil {
-			return err
-		}
+	m.consumer.AddConcurrentHandlers(m, m.MaxInFlight)
+	err = m.consumer.ConnectToNSQLookupds(m.LookupdAddresses)
+	if err != nil {
+		return err
 	}
 	go m.syncLogFormat()
 	return err
 }
 
 func (m *LogParser) Stop() {
-	m.reader.Stop()
-	m.writer.Stop()
+	m.consumer.Stop()
+	m.producer.Stop()
 	close(m.exitChannel)
 	m.Pool.Close()
 }
@@ -138,7 +138,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 		return nil
 	}
 	if message["bayes_check"] == "chaos" {
-		m.writer.Publish(m.TrainTopic, msg.Body)
+		m.producer.Publish(m.TrainTopic, msg.Body)
 	}
 	record.body = message
 	m.msgChannel <- record
