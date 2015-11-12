@@ -3,11 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/bitly/go-nsq"
 	"github.com/garyburd/redigo/redis"
 	"github.com/jbrukh/bayesian"
-	"github.com/mattbaird/elastigo/api"
-	"github.com/mattbaird/elastigo/core"
+	"github.com/mattbaird/elastigo/lib"
+	"github.com/nsqio/go-nsq"
 	"log"
 	"os"
 	"regexp"
@@ -247,11 +246,11 @@ func (m *LogParser) syncLogFormat() {
 }
 
 func (m *LogParser) elasticSearchBuildIndex() {
-	api.Domain = m.ElasticSearchHost
-	api.Port = m.ElasticSearchPort
-	indexor := core.NewBulkIndexorErrors(10, 60)
-	done := make(chan bool)
-	indexor.Run(done)
+	c := elastigo.NewConn()
+	c.Domain = m.ElasticSearchHost
+	indexor := c.NewBulkIndexerErrors(10, 60)
+	indexor.Start()
+	defer indexor.Stop()
 	var err error
 	ticker := time.Tick(time.Second * 600)
 	yy, mm, dd := time.Now().Date()
@@ -269,14 +268,13 @@ func (m *LogParser) elasticSearchBuildIndex() {
 		case errBuf := <-indexor.ErrorChannel:
 			log.Println(errBuf.Err)
 		case r := <-m.msgChannel:
-			err = indexor.Index(searchIndex, logtype, "", r.ttl, &timestamp, r.body)
+			err = indexor.Index(searchIndex, logtype, "", "", fmt.Sprintf("%ss", r.ttl), &timestamp, r.body)
 			r.errChannel <- err
 		case <-m.exitChannel:
 			log.Println("exit elasticsearch")
 			break
 		}
 	}
-	done <- true
 }
 
 func (m *LogParser) parseWords(msg string) []string {
