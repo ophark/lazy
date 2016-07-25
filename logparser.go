@@ -1,9 +1,10 @@
 package main
 
 import (
+	"./logformat"
 	"encoding/json"
 	"fmt"
-	"github.com/garyburd/redigo/redis"
+	"github.com/hashicorp/consul/api"
 	"github.com/jbrukh/bayesian"
 	"github.com/mattbaird/elastigo/lib"
 	"github.com/nsqio/go-nsq"
@@ -16,20 +17,20 @@ import (
 )
 
 type RegexpSetting struct {
-	Exp   *regexp.Regexp
-	State string
+	E   string         `json:"exp"`
+	Exp *regexp.Regexp `json:"-"`
+	TTL string         `json:"ttl"`
 }
 
 type LogParser struct {
 	sync.Mutex
-	*redis.Pool
 	*Setting
 	logTopic        string
-	classifiers     []string
 	logChannel      string
 	consumer        *nsq.Consumer
 	producer        *nsq.Producer
 	logSetting      *LogSetting
+	classifiers     []string
 	c               *bayesian.Classifier
 	wordSplitRegexp *regexp.Regexp
 	regexMap        map[string][]*RegexpSetting
@@ -38,20 +39,13 @@ type LogParser struct {
 }
 
 func (m *LogParser) Run() error {
-	redisCon := func() (redis.Conn, error) {
-		c, err := redis.Dial("tcp", m.RedisServer)
-		if err != nil {
-			return nil, err
-		}
-		return c, err
-	}
-	m.Pool = redis.NewPool(redisCon, 3)
-	m.getLogFormat()
 	m.getRegexp()
 	m.getBayes()
 	m.wordSplitRegexp = regexp.MustCompile(m.logSetting.SplitRegexp)
-	m.logChannel = "logtoelasticsearch"
-	go m.elasticSearchBuildIndex()
+	m.logChannel = "logtoelasticsearch#ephemeral"
+	for i := 0; i < m.MaxInFlight/10+1; i++ {
+		go m.elasticSearchBuildIndex()
+	}
 	cfg := nsq.NewConfig()
 	hostname, err := os.Hostname()
 	cfg.Set("user_agent", fmt.Sprintf("lazy/%s", hostname))
@@ -76,35 +70,29 @@ func (m *LogParser) Stop() {
 	m.consumer.Stop()
 	m.producer.Stop()
 	close(m.exitChannel)
-	m.Pool.Close()
+}
+
+func ReadLog(buf []byte) ([]byte, []byte) {
+	logformat := logformat.GetRootAsLogMessage(buf, 0)
+	return logformat.RawMsg(), logformat.From()
 }
 
 func (m *LogParser) HandleMessage(msg *nsq.Message) error {
-	m.Lock()
-	defer m.Unlock()
-	body := make(map[string]string)
-	err := json.Unmarshal(msg.Body, &body)
-	if err != nil {
-		return nil
-	}
+	rawlog, from := ReadLog(msg.Body)
 	record := ElasticRecord{
 		errChannel: make(chan error),
 		ttl:        m.logSetting.IndexTTL,
 	}
-	message, err := m.logSetting.Parser([]byte(body["raw_msg"]))
+	m.Lock()
+	defer m.Unlock()
+	message, err := m.logSetting.Parser(rawlog)
 	if err != nil {
-		log.Println(err, body["raw_msg"])
+		log.Println(err, rawlog)
 		return nil
 	}
-	message["from"] = body["from"]
+	message["from"] = from
 	if m.logSetting.LogType == "rfc3164" {
 		tag := message["tag"].(string)
-		if len(tag) == 0 {
-			message["tag"] = "misc"
-			tag = "misc"
-		} else {
-			tag = strings.Replace(tag, ".", "", -1)
-		}
 		for _, check := range m.logSetting.AddtionCheck {
 			switch check {
 			case "regexp":
@@ -113,8 +101,8 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 					message["ttl"] = "-1"
 					for _, r := range rg {
 						if r.Exp.MatchString(message["content"].(string)) {
-							message["ttl"] = r.State
-							record.ttl = r.State
+							message["ttl"] = r.TTL
+							record.ttl = r.TTL
 						}
 					}
 				}
@@ -144,101 +132,102 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 	return <-record.errChannel
 }
 
-func (m *LogParser) getLogFormat() {
-	con := m.Pool.Get()
-	defer con.Close()
-	body, e := con.Do("GET", "logsetting:"+m.logTopic)
-	if e != nil {
-		return
-	}
-	m.Lock()
-	defer m.Unlock()
-	var logSetting LogSetting
-	if err := json.Unmarshal(body.([]byte), &logSetting); err == nil {
-		m.logSetting = &logSetting
-	}
-
-}
-
-func (m *LogParser) getBayes() {
-	con := m.Get()
-	defer con.Close()
-	classifiers, err := redis.Strings(con.Do("SMEMBERS", "classifiers"))
+func (m *LogParser) getBayes() error {
+	config := api.DefaultConfig()
+	config.Address = m.ConsulAddress
+	config.Datacenter = m.Datacenter
+	config.Token = m.Token
+	client, err := api.NewClient(config)
 	if err != nil {
-		log.Println("fail to get classifiers", classifiers)
-		return
+		return err
 	}
+	kv := client.KV()
+	key := fmt.Sprintf("%s/classifiers/%s", m.ConsulKey, m.logTopic)
+	classifiers, _, err := kv.List(key, nil)
+	if err != nil {
+		return err
+	}
+
 	if len(classifiers) < 2 {
-		log.Println("classifiers is less than 2")
-		return
+		return fmt.Errorf("%s", "classifiers is less than 2")
 	}
 	var classifierList []bayesian.Class
-	for _, c := range classifiers {
-		classifierList = append(classifierList, bayesian.Class(c))
+	size := len(key) + 1
+	for _, value := range classifiers {
+		c := bayesian.Class(value.Key[size:])
+		classifierList = append(classifierList, c)
 	}
 	m.Lock()
 	defer m.Unlock()
-	m.classifiers = classifiers
 	m.c = bayesian.NewClassifier(classifierList...)
-	for _, c := range classifierList {
-		words, err := redis.Strings(con.Do("SMEMBERS", "classifier:"+string(c)))
-		if err != nil {
-			log.Println("fail to get words", c)
-			return
-		}
+	for _, value := range classifiers {
+		c := bayesian.Class(value.Key[size:])
+		words := strings.Split(string(value.Value), ",")
 		m.c.Learn(words, c)
 	}
+	return nil
 }
 
-func (m *LogParser) getRegexp() {
-	con := m.Get()
-	defer con.Close()
-	t, e := redis.Strings(con.Do("SMEMBERS", "logtags"))
-	if e != nil {
-		return
+func (m *LogParser) getRegexp() error {
+	config := api.DefaultConfig()
+	config.Address = m.ConsulAddress
+	config.Datacenter = m.Datacenter
+	config.Token = m.Token
+	client, err := api.NewClient(config)
+	if err != nil {
+		return err
+	}
+	kv := client.KV()
+	key := fmt.Sprintf("%s/regexp/%s", m.ConsulKey, m.logTopic)
+	pairs, _, err := kv.List(key, nil)
+	if err != nil {
+		return err
 	}
 	m.Lock()
 	defer m.Unlock()
-	for _, value := range t {
-		r, _ := redis.Strings(con.Do("SMEMBERS", "logtag:"+value))
-		var rg []*RegexpSetting
-		for _, v := range r {
-			var status map[string]string
-			reg := &RegexpSetting{}
-			if err := json.Unmarshal([]byte(v), &status); err == nil {
-				if len(status["regexp"]) > 0 && len(status["ttl"]) > 0 {
-					x, e := regexp.CompilePOSIX(status["regexp"])
+	size := len(m.ConsulKey) + 1
+	for _, value := range pairs {
+		if len(value.Key) > size {
+			var regs []*RegexpSetting
+			if err := json.Unmarshal(value.Value, &regs); err == nil {
+				for i, v := range regs {
+					x, e := regexp.CompilePOSIX(v.E)
 					if e != nil {
-						log.Println(r, e)
+						log.Println("get regexp", e)
 						continue
 					}
-					reg.Exp = x
-					reg.State = status["ttl"]
-					rg = append(rg, reg)
+					regs[i].Exp = x
 				}
+				m.regexMap[value.Key[size:]] = regs
 			}
 		}
-		m.regexMap[value] = rg
 	}
+	return nil
 }
 
 func (m *LogParser) syncLogFormat() {
 	ticker := time.Tick(time.Second * 600)
 	for {
-		m.getLogFormat()
-		for _, check := range m.logSetting.AddtionCheck {
-			switch check {
-			case "regexp":
-				m.getRegexp()
-			case "bayes":
-				m.getBayes()
-			default:
-				log.Println("unsupportted check way", check)
-			}
-		}
 		select {
 		case <-ticker:
-			continue
+			if err := m.getLogFormat(); err != nil {
+				log.Println(err)
+				continue
+			}
+			for _, check := range m.logSetting.AddtionCheck {
+				switch check {
+				case "regexp":
+					if err := m.getRegexp(); err != nil {
+						log.Println(err)
+					}
+				case "bayes":
+					if err := m.getBayes(); err != nil {
+						log.Println(err)
+					}
+				default:
+					log.Println("unsupportted check way", check)
+				}
+			}
 		case <-m.exitChannel:
 			return
 		}
@@ -284,4 +273,30 @@ func (m *LogParser) parseWords(msg string) []string {
 		tokens = append(tokens, strings.ToLower(v))
 	}
 	return tokens
+}
+
+func (m *LogParser) getLogFormat() error {
+	config := api.DefaultConfig()
+	config.Address = m.ConsulAddress
+	config.Datacenter = m.Datacenter
+	config.Token = m.Token
+	client, err := api.NewClient(config)
+	if err != nil {
+		return err
+	}
+	kv := client.KV()
+	topicsKey := fmt.Sprintf("%s/topics/%s", m.ConsulKey, m.logTopic)
+	value, _, err := kv.Get(topicsKey, nil)
+	if err != nil {
+		return err
+	}
+	var logSetting LogSetting
+	err = json.Unmarshal(value.Value, &logSetting)
+	if err != nil {
+		return err
+	}
+	m.Lock()
+	defer m.Unlock()
+	m.logSetting = &logSetting
+	return nil
 }

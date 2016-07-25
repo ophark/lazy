@@ -1,7 +1,9 @@
 package main
 
 import (
-	"github.com/garyburd/redigo/redis"
+	"encoding/json"
+	"fmt"
+	"github.com/hashicorp/consul/api"
 	"log"
 	"sync"
 	"time"
@@ -9,28 +11,14 @@ import (
 
 type LogParserPool struct {
 	sync.Mutex
-	*redis.Pool
 	*Setting
 	checklist     map[string]string
 	exitChannel   chan int
 	logParserList map[string]*LogParser
 }
 
-func (m *LogParserPool) Run() {
-	redisCon := func() (redis.Conn, error) {
-		c, err := redis.Dial("tcp", m.RedisServer)
-		if err != nil {
-			return nil, err
-		}
-		return c, err
-	}
-	m.Pool = redis.NewPool(redisCon, 3)
-	go m.syncLogTopics()
-}
-
 func (m *LogParserPool) Stop() {
 	close(m.exitChannel)
-	m.Pool.Close()
 	m.Lock()
 	defer m.Unlock()
 	for k := range m.logParserList {
@@ -38,13 +26,19 @@ func (m *LogParserPool) Stop() {
 	}
 }
 
-func (m *LogParserPool) syncLogTopics() {
+func (m *LogParserPool) Run() {
 	ticker := time.Tick(time.Second * 600)
-	m.getLogTopics()
+	err := m.getLogTopics()
+	if err != nil {
+		log.Println(err)
+	}
 	for {
 		select {
 		case <-ticker:
-			m.getLogTopics()
+			err = m.getLogTopics()
+			if err != nil {
+				log.Println(err)
+			}
 			m.checkLogParsers()
 		case <-m.exitChannel:
 			return
@@ -52,25 +46,41 @@ func (m *LogParserPool) syncLogTopics() {
 	}
 }
 
-func (m *LogParserPool) getLogTopics() {
-	con := m.Get()
-	defer con.Close()
-	topics, err := redis.Strings(con.Do("SMEMBERS", "logtopics"))
+//"%s/topics"
+func (m *LogParserPool) getLogTopics() error {
+	config := api.DefaultConfig()
+	config.Address = m.ConsulAddress
+	config.Datacenter = m.Datacenter
+	config.Token = m.Token
+	client, err := api.NewClient(config)
 	if err != nil {
-		log.Println("fail to get topics")
-		return
+		return err
 	}
+	kv := client.KV()
+	topicsKey := fmt.Sprintf("%s/topics", m.ConsulKey)
+	pairs, _, err := kv.List(topicsKey, nil)
+	if err != nil {
+		return err
+	}
+	size := len(topicsKey) + 1
 	m.Lock()
 	defer m.Unlock()
-	for _, topic := range topics {
+	for _, value := range pairs {
+		topic := value.Key[size:]
 		m.checklist[topic] = topic
 		if _, ok := m.logParserList[topic]; !ok {
+			var logSetting LogSetting
+			err = json.Unmarshal(value.Value, &logSetting)
+			if err != nil {
+				return err
+			}
 			w := &LogParser{
 				Setting:     m.Setting,
 				logTopic:    topic,
 				regexMap:    make(map[string][]*RegexpSetting),
 				exitChannel: make(chan int),
 				msgChannel:  make(chan ElasticRecord),
+				logSetting:  &logSetting,
 			}
 			if err := w.Run(); err != nil {
 				log.Println(topic, err)
@@ -79,6 +89,7 @@ func (m *LogParserPool) getLogTopics() {
 			m.logParserList[topic] = w
 		}
 	}
+	return nil
 }
 
 func (m *LogParserPool) checkLogParsers() {

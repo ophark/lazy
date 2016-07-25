@@ -28,6 +28,14 @@ func (l *LogSetting) Parser(msg []byte) (map[string]interface{}, error) {
 			return data, err
 		}
 		data = p.Dump()
+		tag := data["tag"].(string)
+		tag = strings.Replace(tag, ".", "", -1)
+		items := strings.Split(tag, "/")
+		tag = items[len(items)-1]
+		if len(tag) == 0 {
+			tag = "misc"
+		}
+		data["tag"] = tag
 	} else {
 		data, err = l.wildFormat(generateLogTokens(msg))
 	}
