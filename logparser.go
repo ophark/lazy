@@ -33,12 +33,22 @@ type LogParser struct {
 	classifiers     []string
 	c               *bayesian.Classifier
 	wordSplitRegexp *regexp.Regexp
+	client *api.Client
 	regexMap        map[string][]*RegexpSetting
 	exitChannel     chan int
 	msgChannel      chan ElasticRecord
 }
 
 func (m *LogParser) Run() error {
+	config := api.DefaultConfig()
+	config.Address = m.ConsulAddress
+	config.Datacenter = m.Datacenter
+	config.Token = m.Token
+	var err error
+	m.client, err = api.NewClient(config)
+	if err != nil {
+		return err
+	}
 	m.getRegexp()
 	m.getBayes()
 	m.wordSplitRegexp = regexp.MustCompile(m.logSetting.SplitRegexp)
@@ -133,15 +143,7 @@ func (m *LogParser) HandleMessage(msg *nsq.Message) error {
 }
 
 func (m *LogParser) getBayes() error {
-	config := api.DefaultConfig()
-	config.Address = m.ConsulAddress
-	config.Datacenter = m.Datacenter
-	config.Token = m.Token
-	client, err := api.NewClient(config)
-	if err != nil {
-		return err
-	}
-	kv := client.KV()
+	kv := m.client.KV()
 	key := fmt.Sprintf("%s/classifiers/%s", m.ConsulKey, m.logTopic)
 	classifiers, _, err := kv.List(key, nil)
 	if err != nil {
@@ -169,15 +171,7 @@ func (m *LogParser) getBayes() error {
 }
 
 func (m *LogParser) getRegexp() error {
-	config := api.DefaultConfig()
-	config.Address = m.ConsulAddress
-	config.Datacenter = m.Datacenter
-	config.Token = m.Token
-	client, err := api.NewClient(config)
-	if err != nil {
-		return err
-	}
-	kv := client.KV()
+	kv := m.client.KV()
 	key := fmt.Sprintf("%s/regexp/%s", m.ConsulKey, m.logTopic)
 	pairs, _, err := kv.List(key, nil)
 	if err != nil {
@@ -276,15 +270,7 @@ func (m *LogParser) parseWords(msg string) []string {
 }
 
 func (m *LogParser) getLogFormat() error {
-	config := api.DefaultConfig()
-	config.Address = m.ConsulAddress
-	config.Datacenter = m.Datacenter
-	config.Token = m.Token
-	client, err := api.NewClient(config)
-	if err != nil {
-		return err
-	}
-	kv := client.KV()
+	kv := m.client.KV()
 	topicsKey := fmt.Sprintf("%s/topics/%s", m.ConsulKey, m.logTopic)
 	value, _, err := kv.Get(topicsKey, nil)
 	if err != nil {

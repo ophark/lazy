@@ -15,6 +15,7 @@ type LogParserPool struct {
 	checklist     map[string]string
 	exitChannel   chan int
 	logParserList map[string]*LogParser
+	client *api.Client
 }
 
 func (m *LogParserPool) Stop() {
@@ -28,7 +29,16 @@ func (m *LogParserPool) Stop() {
 
 func (m *LogParserPool) Run() {
 	ticker := time.Tick(time.Second * 600)
-	err := m.getLogTopics()
+	config := api.DefaultConfig()
+	config.Address = m.ConsulAddress
+	config.Datacenter = m.Datacenter
+	config.Token = m.Token
+	var err error
+	m.client, err = api.NewClient(config)
+	if err != nil {
+		log.Println(err)
+	}
+	err = m.getLogTopics()
 	if err != nil {
 		log.Println(err)
 	}
@@ -48,15 +58,7 @@ func (m *LogParserPool) Run() {
 
 //"%s/topics"
 func (m *LogParserPool) getLogTopics() error {
-	config := api.DefaultConfig()
-	config.Address = m.ConsulAddress
-	config.Datacenter = m.Datacenter
-	config.Token = m.Token
-	client, err := api.NewClient(config)
-	if err != nil {
-		return err
-	}
-	kv := client.KV()
+	kv := m.client.KV()
 	topicsKey := fmt.Sprintf("%s/topics", m.ConsulKey)
 	pairs, _, err := kv.List(topicsKey, nil)
 	if err != nil {
