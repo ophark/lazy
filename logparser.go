@@ -17,7 +17,7 @@ import (
 )
 
 type RegexpSetting struct {
-	E   string         `json:"exp"`
+	E   string         `json:"regexp"`
 	Exp *regexp.Regexp `json:"-"`
 	TTL string         `json:"ttl"`
 }
@@ -33,7 +33,7 @@ type LogParser struct {
 	classifiers     []string
 	c               *bayesian.Classifier
 	wordSplitRegexp *regexp.Regexp
-	client *api.Client
+	client          *api.Client
 	regexMap        map[string][]*RegexpSetting
 	exitChannel     chan int
 	msgChannel      chan ElasticRecord
@@ -84,11 +84,11 @@ func (m *LogParser) Stop() {
 
 func ReadLog(buf []byte) ([]byte, []byte) {
 	logformat := logformat.GetRootAsLogMessage(buf, 0)
-	return logformat.RawMsg(), logformat.From()
+	return logformat.From(), logformat.RawMsg()
 }
 
 func (m *LogParser) HandleMessage(msg *nsq.Message) error {
-	rawlog, from := ReadLog(msg.Body)
+	from, rawlog := ReadLog(msg.Body)
 	record := ElasticRecord{
 		errChannel: make(chan error),
 		ttl:        m.logSetting.IndexTTL,
@@ -156,6 +156,9 @@ func (m *LogParser) getBayes() error {
 	var classifierList []bayesian.Class
 	size := len(key) + 1
 	for _, value := range classifiers {
+		if len(value.Key) <= size {
+			continue
+		}
 		c := bayesian.Class(value.Key[size:])
 		classifierList = append(classifierList, c)
 	}
@@ -163,6 +166,9 @@ func (m *LogParser) getBayes() error {
 	defer m.Unlock()
 	m.c = bayesian.NewClassifier(classifierList...)
 	for _, value := range classifiers {
+		if len(value.Key) <= size {
+			continue
+		}
 		c := bayesian.Class(value.Key[size:])
 		words := strings.Split(string(value.Value), ",")
 		m.c.Learn(words, c)

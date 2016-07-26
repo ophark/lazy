@@ -15,7 +15,7 @@ type LogParserPool struct {
 	checklist     map[string]string
 	exitChannel   chan int
 	logParserList map[string]*LogParser
-	client *api.Client
+	client        *api.Client
 }
 
 func (m *LogParserPool) Stop() {
@@ -40,7 +40,7 @@ func (m *LogParserPool) Run() {
 	}
 	err = m.getLogTopics()
 	if err != nil {
-		log.Println(err)
+		log.Println("faild to get topic", err)
 	}
 	for {
 		select {
@@ -68,6 +68,9 @@ func (m *LogParserPool) getLogTopics() error {
 	m.Lock()
 	defer m.Unlock()
 	for _, value := range pairs {
+		if len(value.Key) <= size {
+			continue
+		}
 		topic := value.Key[size:]
 		m.checklist[topic] = topic
 		if _, ok := m.logParserList[topic]; !ok {
