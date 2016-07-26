@@ -1,9 +1,9 @@
 package main
 
 import (
-	"./logformat"
 	"encoding/json"
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/consul/api"
 	"github.com/jbrukh/bayesian"
 	"github.com/mattbaird/elastigo/lib"
@@ -82,25 +82,25 @@ func (m *LogParser) Stop() {
 	close(m.exitChannel)
 }
 
-func ReadLog(buf []byte) ([]byte, []byte) {
-	logformat := logformat.GetRootAsLogMessage(buf, 0)
-	return logformat.From(), logformat.RawMsg()
-}
-
 func (m *LogParser) HandleMessage(msg *nsq.Message) error {
-	from, rawlog := ReadLog(msg.Body)
+	var logFormat LogFormat
+	err := proto.Unmarshal(msg.Body, &logFormat)
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
 	record := ElasticRecord{
 		errChannel: make(chan error),
 		ttl:        m.logSetting.IndexTTL,
 	}
 	m.Lock()
 	defer m.Unlock()
-	message, err := m.logSetting.Parser(rawlog)
+	message, err := m.logSetting.Parser([]byte(logFormat.GetRawmsg()))
 	if err != nil {
-		log.Println(err, rawlog)
+		log.Println(err, logFormat.Rawmsg)
 		return nil
 	}
-	message["from"] = from
+	message["from"] = logFormat.From
 	if m.logSetting.LogType == "rfc3164" {
 		tag := message["tag"].(string)
 		for _, check := range m.logSetting.AddtionCheck {
