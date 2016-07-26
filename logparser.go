@@ -155,11 +155,13 @@ func (m *LogParser) getBayes() error {
 	}
 	var classifierList []bayesian.Class
 	size := len(key) + 1
+	var clist []string
 	for _, value := range classifiers {
 		if len(value.Key) <= size {
 			continue
 		}
 		c := bayesian.Class(value.Key[size:])
+		clist = append(clist, value.Key[size:])
 		classifierList = append(classifierList, c)
 	}
 	m.Lock()
@@ -173,6 +175,7 @@ func (m *LogParser) getBayes() error {
 		words := strings.Split(string(value.Value), ",")
 		m.c.Learn(words, c)
 	}
+	m.classifiers = clist
 	return nil
 }
 
